@@ -2367,7 +2367,7 @@
   standard_name = kinematic_surface_upward_sensible_heat_flux_of_fire
   long_name = kinematic surface upward sensible heat flux of fire
   units = K m s-1
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_fire_coupling)
@@ -2375,7 +2375,7 @@
   standard_name = surface_upward_specific_humidity_flux_of_fire
   long_name = kinematic surface upward latent heat flux of fire
   units = kg kg-1 m s-1
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_fire_coupling)
@@ -2383,7 +2383,7 @@
   standard_name = smoke_emission_of_fire
   long_name = smoke emission of fire
   units = kg m-2
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_fire_coupling)
@@ -3227,7 +3227,7 @@
   standard_name = dry_air_density
   long_name = dry air density
   units = kg m-3
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (do_smoke_coupling)
