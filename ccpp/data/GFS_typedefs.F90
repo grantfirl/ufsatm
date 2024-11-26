@@ -3381,7 +3381,7 @@ module GFS_typedefs
     integer              :: iems           =  0              !< 1.0 => Noah lsm
                                                              !< 2.0 => Noah MP and RUC lsms
     integer              :: iaer           =  1              !< default aerosol effect in sw only
-    integer              :: iaermdl        =  0              !< default tropospheric aerosol model scheme flag
+    integer              :: iaermdl        =  1              !< default tropospheric aerosol model scheme flag
                                                              !< 0: seasonal global distributed OPAC aerosol climatology
                                                              !< 1: monthly global distributed GOCART aerosol climatology
                                                              !< 2: GOCART prognostic aerosol model
@@ -4490,8 +4490,9 @@ module GFS_typedefs
     Model%ialb             = ialb
     Model%iems             = iems
     Model%iaer             = iaer
+    Model%iaermdl          = iaer/1000
     Model%iaerclm          = iaerclm
-    if (iaer/1000 == 1 .or. Model%iccn == 2) then
+    if (iaer/1000 == 1 .or. Model%iccn == 2 .or. Model%iaermdl ==6 ) then
       Model%iaerclm = .true.
       ntrcaer = ntrcaerm
     else if (iaer/1000 == 2) then
