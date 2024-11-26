@@ -4502,7 +4502,6 @@ module GFS_typedefs
     endif
     Model%lalw1bd          = lalw1bd
     Model%iaerflg          = iaerflg
-    Model%iaermdl          = iaermdl
     Model%aeros_file       = aeros_file
     Model%solar_file       = solar_file
     Model%semis_file       = semis_file
