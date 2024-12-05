@@ -373,7 +373,7 @@ module GFS_diagnostics
     ExtDiag(idx)%intpl_method = 'bilinear'
     allocate (ExtDiag(idx)%data(nblks))
     do nb = 1,nblks
-      ExtDiag(idx)%data(nb)%var2 => IntDiag(nb)%dswsfcci(:)
+      ExtDiag(idx)%data(nb)%var2 => IntDiag%dswsfcci(Model%chunk_begin(nb):Model%chunk_end(nb))
     enddo    
     
     idx = idx + 1
