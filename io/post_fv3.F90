@@ -1668,7 +1668,7 @@ module post_fv3
               sllevel(7) = 1.0
               sllevel(8) = 1.6
               sllevel(9) = 3.0
-            endif 
+            endif
 
             ! liquid volumetric soil mpisture in fraction
             if(trim(fieldname)=='soill1') then
