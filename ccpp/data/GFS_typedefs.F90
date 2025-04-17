@@ -3339,7 +3339,8 @@ module GFS_typedefs
 !--- modules
     use physcons,         only: con_rerth, con_pi
     use mersenne_twister, only: random_setseed, random_number
-    use parse_tracers,    only: get_tracer_index
+    use field_manager_mod, only: MODEL_ATMOS
+    use tracer_manager_mod, only: get_tracer_index, NO_TRACER
 !
     implicit none
 
@@ -5289,51 +5290,50 @@ module GFS_typedefs
     Model%tracer_names(:)  = tracer_names(:)
     Model%ntqv             = 1
 #ifdef MULTI_GASES
-    Model%nto              = get_tracer_index(Model%tracer_names, 'spo',        Model%me, Model%master, Model%debug)
-    Model%nto2             = get_tracer_index(Model%tracer_names, 'spo2',       Model%me, Model%master, Model%debug)
-    Model%ntoz             = get_tracer_index(Model%tracer_names, 'spo3',       Model%me, Model%master, Model%debug)
+    Model%nto              = get_tracer_index(MODEL_ATMOS, 'spo',       verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nto2             = get_tracer_index(MODEL_ATMOS, 'spo2',      verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntoz             = get_tracer_index(MODEL_ATMOS, 'spo3',      verbose = (Model%me == Model%master) .and. Model%debug)
 #else
-    Model%ntoz             = get_tracer_index(Model%tracer_names, 'o3mr',       Model%me, Model%master, Model%debug)
+    Model%ntoz             = get_tracer_index(MODEL_ATMOS, 'o3mr',       verbose = (Model%me == Model%master) .and. Model%debug)
     if( Model%ntoz <= 0 )  &
-    Model%ntoz             =  get_tracer_index(Model%tracer_names, 'spo3',       Model%me, Model%master, Model%debug)
+    Model%ntoz             =  get_tracer_index(MODEL_ATMOS, 'spo3',      verbose = (Model%me == Model%master) .and. Model%debug)
 #endif
-    Model%ntcw             = get_tracer_index(Model%tracer_names, 'liq_wat',    Model%me, Model%master, Model%debug)
-    Model%ntiw             = get_tracer_index(Model%tracer_names, 'ice_wat',    Model%me, Model%master, Model%debug)
-    Model%ntrw             = get_tracer_index(Model%tracer_names, 'rainwat',    Model%me, Model%master, Model%debug)
-    Model%ntsw             = get_tracer_index(Model%tracer_names, 'snowwat',    Model%me, Model%master, Model%debug)
-    Model%ntgl             = get_tracer_index(Model%tracer_names, 'graupel',    Model%me, Model%master, Model%debug)
-    Model%nthl             = get_tracer_index(Model%tracer_names, 'hailwat',    Model%me, Model%master, Model%debug)
-    Model%ntclamt          = get_tracer_index(Model%tracer_names, 'cld_amt',    Model%me, Model%master, Model%debug)
-    Model%ntlnc            = get_tracer_index(Model%tracer_names, 'water_nc',   Model%me, Model%master, Model%debug)
-    Model%ntinc            = get_tracer_index(Model%tracer_names, 'ice_nc',     Model%me, Model%master, Model%debug)
-    Model%ntrnc            = get_tracer_index(Model%tracer_names, 'rain_nc',    Model%me, Model%master, Model%debug)
-    Model%ntsnc            = get_tracer_index(Model%tracer_names, 'snow_nc',    Model%me, Model%master, Model%debug)
-    Model%ntgnc            = get_tracer_index(Model%tracer_names, 'graupel_nc', Model%me, Model%master, Model%debug)
-    Model%nthnc            = get_tracer_index(Model%tracer_names, 'hail_nc',    Model%me, Model%master, Model%debug)
-    Model%ntccn            = get_tracer_index(Model%tracer_names, 'ccn_nc',     Model%me, Model%master, Model%debug)
-    Model%ntccna           = get_tracer_index(Model%tracer_names, 'ccna_nc',    Model%me, Model%master, Model%debug)
-    Model%ntgv             = get_tracer_index(Model%tracer_names, 'graupel_vol',Model%me, Model%master, Model%debug)
-    Model%nthv             = get_tracer_index(Model%tracer_names, 'hail_vol',   Model%me, Model%master, Model%debug)
-    Model%ntrz             = get_tracer_index(Model%tracer_names, 'rain_ref',   Model%me, Model%master, Model%debug)
-    Model%ntgz             = get_tracer_index(Model%tracer_names, 'graupel_ref',Model%me, Model%master, Model%debug)
-    Model%nthz             = get_tracer_index(Model%tracer_names, 'hail_ref',   Model%me, Model%master, Model%debug)
-    Model%ntke             = get_tracer_index(Model%tracer_names, 'sgs_tke',    Model%me, Model%master, Model%debug)
-    Model%ntsigma          = get_tracer_index(Model%tracer_names, 'sigmab',     Model%me, Model%master, Model%debug)
-    Model%ntomega          = get_tracer_index(Model%tracer_names, 'omegab',     Model%me, Model%master, Model%debug)
-    Model%nqrimef          = get_tracer_index(Model%tracer_names, 'q_rimef',    Model%me, Model%master, Model%debug)
-    Model%ntwa             = get_tracer_index(Model%tracer_names, 'liq_aero',   Model%me, Model%master, Model%debug)
-    Model%ntia             = get_tracer_index(Model%tracer_names, 'ice_aero',   Model%me, Model%master, Model%debug)
+    Model%ntcw             = get_tracer_index(MODEL_ATMOS, 'liq_wat',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntiw             = get_tracer_index(MODEL_ATMOS, 'ice_wat',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntrw             = get_tracer_index(MODEL_ATMOS, 'rainwat',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntsw             = get_tracer_index(MODEL_ATMOS, 'snowwat',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntgl             = get_tracer_index(MODEL_ATMOS, 'graupel',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nthl             = get_tracer_index(MODEL_ATMOS, 'hailwat',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntclamt          = get_tracer_index(MODEL_ATMOS, 'cld_amt',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntlnc            = get_tracer_index(MODEL_ATMOS, 'water_nc',   verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntinc            = get_tracer_index(MODEL_ATMOS, 'ice_nc',     verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntrnc            = get_tracer_index(MODEL_ATMOS, 'rain_nc',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntsnc            = get_tracer_index(MODEL_ATMOS, 'snow_nc',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntgnc            = get_tracer_index(MODEL_ATMOS, 'graupel_nc', verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nthnc            = get_tracer_index(MODEL_ATMOS, 'hail_nc',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntccn            = get_tracer_index(MODEL_ATMOS, 'ccn_nc',     verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntccna           = get_tracer_index(MODEL_ATMOS, 'ccna_nc',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntgv             = get_tracer_index(MODEL_ATMOS, 'graupel_vol',verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nthv             = get_tracer_index(MODEL_ATMOS, 'hail_vol',   verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntrz             = get_tracer_index(MODEL_ATMOS, 'rain_ref',   verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntgz             = get_tracer_index(MODEL_ATMOS, 'graupel_ref',verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nthz             = get_tracer_index(MODEL_ATMOS, 'hail_ref',   verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntke             = get_tracer_index(MODEL_ATMOS, 'sgs_tke',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntsigma          = get_tracer_index(MODEL_ATMOS, 'sigmab',     verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntomega          = get_tracer_index(MODEL_ATMOS, 'omegab',     verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%nqrimef          = get_tracer_index(MODEL_ATMOS, 'q_rimef',    verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntwa             = get_tracer_index(MODEL_ATMOS, 'liq_aero',   verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntia             = get_tracer_index(MODEL_ATMOS, 'ice_aero',   verbose = (Model%me == Model%master) .and. Model%debug)
     if (Model%cpl_fire) then
-    Model%ntfsmoke         = get_tracer_index(Model%tracer_names, 'fsmoke',   Model%me, Model%master, Model%debug)
+    Model%ntfsmoke         = get_tracer_index(MODEL_ATMOS, 'fsmoke',   verbose = (Model%me == Model%master) .and. Model%debug)
     endif
     if (Model%rrfs_sd) then
-    Model%ntsmoke          = get_tracer_index(Model%tracer_names, 'smoke',      Model%me, Model%master, Model%debug)
-    Model%ntdust           = get_tracer_index(Model%tracer_names, 'dust',       Model%me, Model%master, Model%debug)
-    Model%ntcoarsepm       = get_tracer_index(Model%tracer_names, 'coarsepm',   Model%me, Model%master, Model%debug)
+    Model%ntsmoke          = get_tracer_index(MODEL_ATMOS, 'smoke',      verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntdust           = get_tracer_index(MODEL_ATMOS, 'dust',       verbose = (Model%me == Model%master) .and. Model%debug)
+    Model%ntcoarsepm       = get_tracer_index(MODEL_ATMOS, 'coarsepm',   verbose = (Model%me == Model%master) .and. Model%debug)
     endif
 !--- initialize parameters for atmospheric chemistry tracers
     call Model%init_chemistry(tracer_types)
-
 !--- setup aerosol scavenging factors
     call Model%init_scavenging(fscav_aero)
 
@@ -5384,25 +5384,26 @@ module GFS_typedefs
     ! Last index of outermost dimension of dtend
     Model%ndtend = 0
     allocate (Model%dtidx(Model%ntracp100,Model%nprocess))
-    Model%dtidx = -99
+    Model%dtidx = NO_TRACER
 
     if(Model%ntchm>0) then
-      Model%ntdu1 = get_tracer_index(Model%tracer_names, 'dust1', Model%me, Model%master, Model%debug)
-      Model%ntdu2 = get_tracer_index(Model%tracer_names, 'dust2', Model%me, Model%master, Model%debug)
-      Model%ntdu3 = get_tracer_index(Model%tracer_names, 'dust3', Model%me, Model%master, Model%debug)
-      Model%ntdu4 = get_tracer_index(Model%tracer_names, 'dust4', Model%me, Model%master, Model%debug)
-      Model%ntdu5 = get_tracer_index(Model%tracer_names, 'dust5', Model%me, Model%master, Model%debug)
-      Model%ntss1 = get_tracer_index(Model%tracer_names, 'seas1', Model%me, Model%master, Model%debug)
-      Model%ntss2 = get_tracer_index(Model%tracer_names, 'seas2', Model%me, Model%master, Model%debug)
-      Model%ntss3 = get_tracer_index(Model%tracer_names, 'seas3', Model%me, Model%master, Model%debug)
-      Model%ntss4 = get_tracer_index(Model%tracer_names, 'seas4', Model%me, Model%master, Model%debug)
-      Model%ntss5 = get_tracer_index(Model%tracer_names, 'seas5', Model%me, Model%master, Model%debug)
-      Model%ntsu  = get_tracer_index(Model%tracer_names, 'so4',   Model%me, Model%master, Model%debug)
-      Model%ntbcb = get_tracer_index(Model%tracer_names, 'bc1',   Model%me, Model%master, Model%debug)
-      Model%ntbcl = get_tracer_index(Model%tracer_names, 'bc2',   Model%me, Model%master, Model%debug)
-      Model%ntocb = get_tracer_index(Model%tracer_names, 'oc1',   Model%me, Model%master, Model%debug)
-      Model%ntocl = get_tracer_index(Model%tracer_names, 'oc2',   Model%me, Model%master, Model%debug)
+      Model%ntdu1 = get_tracer_index(MODEL_ATMOS, 'dust1', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntdu2 = get_tracer_index(MODEL_ATMOS, 'dust2', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntdu3 = get_tracer_index(MODEL_ATMOS, 'dust3', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntdu4 = get_tracer_index(MODEL_ATMOS, 'dust4', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntdu5 = get_tracer_index(MODEL_ATMOS, 'dust5', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntss1 = get_tracer_index(MODEL_ATMOS, 'seas1', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntss2 = get_tracer_index(MODEL_ATMOS, 'seas2', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntss3 = get_tracer_index(MODEL_ATMOS, 'seas3', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntss4 = get_tracer_index(MODEL_ATMOS, 'seas4', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntss5 = get_tracer_index(MODEL_ATMOS, 'seas5', verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntsu  = get_tracer_index(MODEL_ATMOS, 'so4',   verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntbcb = get_tracer_index(MODEL_ATMOS, 'bc1',   verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntbcl = get_tracer_index(MODEL_ATMOS, 'bc2',   verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntocb = get_tracer_index(MODEL_ATMOS, 'oc1',   verbose = (Model%me == Model%master) .and. Model%debug)
+      Model%ntocl = get_tracer_index(MODEL_ATMOS, 'oc2',   verbose = (Model%me == Model%master) .and. Model%debug)
     end if
+
 
     ! Lake & fractional grid safety checks
     if(Model%me==Model%master) then
@@ -5465,16 +5466,17 @@ module GFS_typedefs
               ! Need better descriptions of these.
               call label_dtend_tracer(Model,100+Model%ntchm+Model%ntchs-1,'pp10','pp10 concentration','kg kg-1 s-1')
 
-              itrac=get_tracer_index(Model%tracer_names, 'DMS', Model%me, Model%master, Model%debug)
+              itrac=get_tracer_index(MODEL_ATMOS, 'DMS', verbose = (Model%me == Model%master) .and. Model%debug)
               if(itrac>0) then
                  call label_dtend_tracer(Model,100+itrac,'DMS','DMS concentration','kg kg-1 s-1')
               endif
-              itrac=get_tracer_index(Model%tracer_names, 'msa', Model%me, Model%master, Model%debug)
+              itrac=get_tracer_index(MODEL_ATMOS, 'msa', verbose = (Model%me == Model%master) .and. Model%debug)
               if(itrac>0) then
                  call label_dtend_tracer(Model,100+itrac,'msa','msa concentration','kg kg-1 s-1')
               endif
            endif
         endif
+
 
         call label_dtend_tracer(Model,Model%index_of_temperature,'temp','temperature','K s-1')
         call label_dtend_tracer(Model,Model%index_of_x_wind,'u','x wind','m s-2')
@@ -5508,7 +5510,6 @@ module GFS_typedefs
         call label_dtend_tracer(Model,100+Model%ntia,'ice_aero','number concentration of ice-friendly aerosols','kg-1 s-1')
         call label_dtend_tracer(Model,100+Model%nto,'o_ion','oxygen ion concentration','kg kg-1 s-1')
         call label_dtend_tracer(Model,100+Model%nto2,'o2','oxygen concentration','kg kg-1 s-1')
-
         call label_dtend_cause(Model,Model%index_of_process_pbl,'pbl','tendency due to PBL')
         call label_dtend_cause(Model,Model%index_of_process_dcnv,'deepcnv','tendency due to deep convection')
         call label_dtend_cause(Model,Model%index_of_process_scnv,'shalcnv','tendency due to shallow convection')
@@ -5558,7 +5559,6 @@ module GFS_typedefs
        call fill_dtidx(Model,dtend_select,Model%index_of_y_wind,Model%index_of_process_physics)
        call fill_dtidx(Model,dtend_select,Model%index_of_x_wind,Model%index_of_process_non_physics)
        call fill_dtidx(Model,dtend_select,Model%index_of_y_wind,Model%index_of_process_non_physics)
-
        if(qdiag3d) then
           call fill_dtidx(Model,dtend_select,100+Model%ntqv,Model%index_of_process_scnv,have_scnv)
           call fill_dtidx(Model,dtend_select,100+Model%ntqv,Model%index_of_process_dcnv,have_dcnv)
@@ -5622,7 +5622,6 @@ module GFS_typedefs
           enddo
        endif
     end if
-
     IF ( Model%imp_physics == Model%imp_physics_nssl2mccn ) THEN ! recognize this option for compatibility
        Model%imp_physics = Model%imp_physics_nssl
        nssl_ccn_on = .true.
@@ -5642,8 +5641,8 @@ module GFS_typedefs
               ENDIF
               stop
             ENDIF
-          Model%ntccn = -99
-          Model%ntccna = -99
+          Model%ntccn = NO_TRACER
+          Model%ntccna = NO_TRACER
         ELSEIF ( Model%ntccn < 1 ) THEN
           if (Model%me == Model%master) then
             write(*,*) 'NSSL micro: error! CCN is ON but ntccn < 1. Must have ccn_nc in field_table if nssl_ccn_on=T'
@@ -5765,7 +5764,6 @@ module GFS_typedefs
        Model%levh2o    = 1
        Model%h2o_coeff = 1
     end if
-
 !--- quantities to be used to derive phy_f*d totals
     Model%nshoc_2d         = nshoc_2d
     Model%nshoc_3d         = nshoc_3d
@@ -6408,7 +6406,6 @@ module GFS_typedefs
 !     Model%upd_slc = land_iau_upd_slc
 !     Model%do_stcsmc_adjustment = land_iau_do_stcsmc_adjustment
 !     Model%min_T_increment = land_iau_min_T_increment
-
     call Model%print ()
 
   end subroutine control_initialize
@@ -6485,7 +6482,7 @@ module GFS_typedefs
     !--- prognostic and diagnostic chemistry tracers.
     !--- Each tracer set is assumed to be contiguous.
 
-    use parse_tracers, only: NO_TRACER
+    use tracer_manager_mod, only: NO_TRACER
 
     !--- interface variables
     class(GFS_control_type) :: Model
@@ -6535,7 +6532,8 @@ module GFS_typedefs
 !----------------------------
   subroutine control_scavenging_initialize(Model, fscav)
 
-    use parse_tracers, only: get_tracer_index
+    use field_manager_mod,      only: MODEL_ATMOS
+    use tracer_manager_mod, only: get_tracer_index, NO_TRACER
 
     !--- interface variables
     class(GFS_control_type)      :: Model
@@ -6570,13 +6568,14 @@ module GFS_typedefs
         if (j > 1) then
           read(fscav(i)(j+1:), *, iostat=ios) tem
           if (ios /= 0) cycle
-          n = get_tracer_index(Model%tracer_names, adjustl(fscav(i)(:j-1)), Model%me, Model%master, Model%debug) &
-              - Model%ntchs + 1
-          if (n > 0) Model%fscav(n) = tem
+          n = get_tracer_index(MODEL_ATMOS, adjustl(fscav(i)(:j-1)), verbose = (Model%me == Model%master) .and. Model%debug)
+          if (n /= NO_TRACER)  then
+            n = n - Model%ntchs + 1
+            if (n > 0) Model%fscav(n) = tem
+          endif
         endif
       enddo
     endif
-
   end subroutine control_scavenging_initialize
 
 
@@ -7791,7 +7790,6 @@ module GFS_typedefs
 ! GFS_diag%create
 !----------------
   subroutine diag_create (Diag, Model)
-    use parse_tracers,    only: get_tracer_index
     class(GFS_diag_type)               :: Diag
     type(GFS_control_type), intent(in) :: Model
     integer :: IM
