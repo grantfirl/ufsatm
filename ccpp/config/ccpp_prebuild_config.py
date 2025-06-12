@@ -180,6 +180,7 @@ SCHEME_FILES = [
     'physics/physics/PBL/SHOC/shoc.F90',
     'physics/physics/PBL/MYJ/myjpbl_wrapper.F90',
     'physics/physics/PBL/MYNN_EDMF/mynnedmf_wrapper.F90',
+    'physics/physics/PBL/MYNN_EDMF/mynnedmf_wrapper_post.F90',
     'physics/physics/PBL/SATMEDMF/satmedmfvdif.F',
     'physics/physics/PBL/SATMEDMF/satmedmfvdifq.F',
     'physics/physics/PBL/YSU/ysuvdif.F90',
