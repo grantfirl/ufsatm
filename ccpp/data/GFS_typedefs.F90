@@ -8346,6 +8346,9 @@ module GFS_typedefs
     character(len=*),  intent(in) :: name
     type(GFS_control_type), intent(in) :: Model
     
+    !--- local variables
+    integer :: get_physics_tracer_index
+    
     get_physics_tracer_index = get_tracer_index(MODEL_ATMOS, name, verbose = (Model%me == Model%master) .and. Model%debug)
     
     if (get_physics_tracer_index == NO_TRACER) get_physics_tracer_index = physics_no_tracer
