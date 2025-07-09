@@ -49,14 +49,7 @@ endif()
 
 # Inline
 if(CDEPS_INLINE)
-  list(APPEND cdeps_inline_srcs cpl/module_inline.F90)
   add_definitions(-DCDEPS_INLINE)
-else()
-  list(APPEND cdeps_inline_srcs "")
-endif()
-
-if(CDEPS_INLINE)
-  add_dependencies(fv3atm cdeps::cdeps)
 endif()
 
 if(ENABLE_RRFS_WAR)
@@ -66,10 +59,6 @@ endif()
 if(BUILD_CI_TESTING)
   include(CTest)
   add_subdirectory(tests)
-endif()
-
-if(CDEPS_INLINE)
-  target_link_libraries(fv3atm PUBLIC cdeps::cdeps)
 endif()
 
 ###############################################################################
@@ -144,6 +133,13 @@ if (FV3)
     list(APPEND moving_nest_srcs "")
   endif()
 
+  # Inline
+  if(CDEPS_INLINE)
+    list(APPEND cdeps_inline_srcs cpl/module_inline.F90)
+  else()
+    list(APPEND cdeps_inline_srcs "")
+  endif()
+
   # FV3 drivers and dependencies
   add_library(${DYCORE_TARGET}
     fv3/atmos_model.F90
@@ -168,9 +164,14 @@ if (FV3)
     fv3/io/module_write_internal_state.F90
     fv3/io/module_wrt_grid_comp.F90
     ${moving_nest_srcs}
+    ${cdeps_inline_srcs}
     ${POST_SRC}
     )
   add_dependencies(${DYCORE_TARGET} fv3 fv3ccpp stochastic_physics)
+
+  if(CDEPS_INLINE)
+    add_dependencies(${DYCORE_TARGET} cdeps::cdeps)
+  endif()
 
   list(APPEND _ufsatm_defs_private GFS_PHYS
                                    INTERNAL_FILE_NML
@@ -197,8 +198,10 @@ if (FV3)
   if(INLINE_POST)
     target_link_libraries(${DYCORE_TARGET} PUBLIC upp::upp)
   endif()
+  if(CDEPS_INLINE)
+    target_link_libraries(${DYCORE_TARGET} PUBLIC cdeps::cdeps)
+  endif()
 endif()
-
 
 
 # Always include EMC libraries in dycore install

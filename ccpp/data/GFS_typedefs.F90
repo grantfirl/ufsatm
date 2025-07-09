@@ -32,8 +32,8 @@ module GFS_typedefs
    integer, private  :: ntrcaer
 
    ! If these are changed to >99, need to adjust formatting string in GFS_diagnostics.F90 (and names in diag_tables)
-   integer, parameter :: naux2dmax = 30 !< maximum number of auxiliary 2d arrays in output (for debugging)
-   integer, parameter :: naux3dmax = 30 !< maximum number of auxiliary 3d arrays in output (for debugging)
+   integer, parameter :: naux2dmax = 20 !< maximum number of auxiliary 2d arrays in output (for debugging)
+   integer, parameter :: naux3dmax = 20 !< maximum number of auxiliary 3d arrays in output (for debugging)
 
    integer, parameter :: dfi_radar_max_intervals = 4 !< Number of radar-derived temperature tendency and/or convection suppression intervals. Do not change.
 

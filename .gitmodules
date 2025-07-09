@@ -9,7 +9,7 @@
 [submodule "ccpp/physics"]
   path = ccpp/physics
   url = https://github.com/uturuncoglu/ccpp-physics
-  branch = feature/inline_working
+  branch = feature/inline_sync
 [submodule "upp"]
   path = upp
   url = https://github.com/NOAA-EMC/UPP

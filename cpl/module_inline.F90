@@ -13,7 +13,7 @@ module module_inline
   use dshr_stream_mod , only: shr_stream_init_from_esmfconfig
 
   use GFS_typedefs    , only: kp => kind_phys
-  use CCPP_data       , only: GFS_control, GFS_data
+  use CCPP_data       , only: GFS_control
   use atmos_model_mod , only: setup_inlinedata
 
   implicit none
