@@ -84,15 +84,12 @@ SCHEME_FILES = [
     # Relative path to source (from where ccpp_prebuild.py is called) : [ list of physics sets in which scheme may be called ];
     # current restrictions are that each scheme can only belong to one physics set, and all schemes within one group in the
     # suite definition file have to belong to the same physics set
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_DCNV_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_DCNV_generic_post.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_GWD_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_GWD_generic_post.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_post.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_PBL_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_PBL_generic_post.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_SCNV_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_SCNV_generic_post.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_debug.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_phys_time_vary.fv3.F90',
@@ -112,8 +109,6 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_stochastics.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_1.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_2.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_stateout_reset.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_stateout_update.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_3.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_4.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_5.F90',
@@ -170,7 +165,6 @@ SCHEME_FILES = [
     'physics/physics/MP/Morrison_Gettelman/m_micro_pre.F90',
     'physics/physics/MP/Morrison_Gettelman/m_micro_post.F90',
     'physics/physics/MP/NSSL/mp_nssl.F90',
-    'physics/physics/MP/Thompson/mp_thompson_pre.F90',
     'physics/physics/MP/Thompson/mp_thompson.F90',
     'physics/physics/MP/Thompson/mp_thompson_post.F90',
     'physics/physics/MP/Zhao_Carr/zhaocarr_gscond.f',
