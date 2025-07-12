@@ -3299,7 +3299,7 @@ end subroutine update_atmos_chemistry
                 nb = Atm_block%blkno(i,j)
                 ix = Atm_block%ixp(i,j)
                 im = GFS_control%chunk_begin(nb)+ix-1
-                GFS_Coupling%fice_dat(im) = datar82d(i,j)
+                GFS_Coupling%fice_dat(im) = datar82d(i-isc+1,j-jsc+1)
              end do
           end do
        case ('Si_thick')
@@ -3309,7 +3309,7 @@ end subroutine update_atmos_chemistry
                 nb = Atm_block%blkno(i,j)
                 ix = Atm_block%ixp(i,j)
                 im = GFS_control%chunk_begin(nb)+ix-1
-                GFS_Coupling%hice_dat(im) = datar82d(i,j)
+                GFS_Coupling%hice_dat(im) = datar82d(i-isc+1,j-jsc+1)
              end do
           end do
        case ('So_omask')
@@ -3319,7 +3319,7 @@ end subroutine update_atmos_chemistry
                 nb = Atm_block%blkno(i,j)
                 ix = Atm_block%ixp(i,j)
                 im = GFS_control%chunk_begin(nb)+ix-1
-                GFS_Coupling%mask_dat(im) = datar82d(i,j)
+                GFS_Coupling%mask_dat(im) = datar82d(i-isc+1,j-jsc+1)
              end do
           end do
        case ('So_t')
@@ -3329,7 +3329,7 @@ end subroutine update_atmos_chemistry
                 nb = Atm_block%blkno(i,j)
                 ix = Atm_block%ixp(i,j)
                 im = GFS_control%chunk_begin(nb)+ix-1
-                GFS_Coupling%tsfco_dat(im) = datar82d(i,j)
+                GFS_Coupling%tsfco_dat(im) = datar82d(i-isc+1,j-jsc+1)
              end do
           end do
        case ('Si_t')
@@ -3339,7 +3339,7 @@ end subroutine update_atmos_chemistry
                 nb = Atm_block%blkno(i,j)
                 ix = Atm_block%ixp(i,j)
                 im = GFS_control%chunk_begin(nb)+ix-1
-                GFS_Coupling%tice_dat(im) = datar82d(i,j)
+                GFS_Coupling%tice_dat(im) = datar82d(i-isc+1,j-jsc+1)
              end do
           end do
        case default

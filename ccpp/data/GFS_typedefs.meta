@@ -3424,7 +3424,7 @@
   standard_name = sea_surface_temperature_from_data
   long_name = sfc temperature
   units = K
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_cdeps_inline)
@@ -3432,7 +3432,7 @@
   standard_name = land_sea_mask_from_data 
   long_name = landmask
   units = flag
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_cdeps_inline)
@@ -3440,7 +3440,7 @@
   standard_name = surface_skin_temperature_over_ice_from_data
   long_name = surface skin temperature over ice
   units = K
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_cdeps_inline)
@@ -3448,7 +3448,7 @@
   standard_name = sea_ice_thickness_from_data
   long_name = sea-ice thickness
   units = m
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_cdeps_inline)
@@ -3456,7 +3456,7 @@
   standard_name = sea_ice_area_fraction_of_sea_area_fraction_from_data
   long_name = sea-ice concentration [0,1]
   units = frac
-  dimensions = (horizontal_loop_extent)
+  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
   active = (do_cdeps_inline)
