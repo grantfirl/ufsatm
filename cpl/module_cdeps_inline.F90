@@ -45,11 +45,11 @@ module module_cdeps_inline
   type(config) :: stream ! stream configuration
   type(shr_strdata_type) :: sdat_config
   type(shr_strdata_type), allocatable :: sdat(:) ! input data stream
-  real(kind=kp), dimension(:,:), allocatable :: farray !dataptr2d
+  real(kind=8), dimension(:,:), allocatable :: farray
 
   integer :: dbug = 0
   integer :: logunit = 6
-  real(kind=kp), parameter :: missing_value = 9.99e20_kp
+  real(kind=8), parameter :: missing_value = 9.99d20
 !
   contains
 
@@ -169,7 +169,7 @@ module module_cdeps_inline
       type(ESMF_Time)  :: currTime
       type(ESMF_Field) :: fmesh
       type(ESMF_RouteHandle), save :: rh
-      real(kind=kp), dimension(:,:), pointer  :: dataptr2d
+      real(kind=8), dimension(:,:), pointer  :: dataptr2d
 
       ! query clock
       call ESMF_ClockGet(clock, currTime=currTime, rc=rc)
