@@ -7,7 +7,6 @@ module GFS_init
                                       GFS_control_type, GFS_grid_type,     &
                                       GFS_tbd_type,     GFS_cldprop_type,  &
                                       GFS_radtend_type, GFS_diag_type
-  use CCPP_typedefs,            only: GFS_interstitial_type
 
   implicit none
 
@@ -28,7 +27,7 @@ module GFS_init
 !--------------
   subroutine GFS_initialize (Model, Statein, Stateout, Sfcprop,     &
                              Coupling, Grid, Tbd, Cldprop, Radtend, & 
-                             Diag, Interstitial, Init_parm)
+                             Diag, Init_parm)
 
 #ifdef _OPENMP
     use omp_lib
@@ -45,7 +44,6 @@ module GFS_init
     type(GFS_cldprop_type),      intent(inout) :: Cldprop
     type(GFS_radtend_type),      intent(inout) :: Radtend
     type(GFS_diag_type),         intent(inout) :: Diag
-    type(GFS_interstitial_type), intent(inout), allocatable :: Interstitial(:)
     type(GFS_init_type),         intent(in)    :: Init_parm
 
     !--- local variables
@@ -90,9 +88,6 @@ module GFS_init
     call Radtend%create(Model)
     call Coupling%create(Model)
     call Diag%create(Model)
-
-    ! We need (nthrds+1) of the interstitial type
-    allocate(Interstitial(nthrds+1))
 
     !--- populate the grid components
     call GFS_grid_populate (Grid, Init_parm%xlon, Init_parm%xlat, Init_parm%area)

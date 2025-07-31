@@ -552,7 +552,7 @@ subroutine atmos_model_init (Atmos, Time_init, Time, Time_step)
   integer              :: ntracers
   character(len=32), allocatable, target :: tracer_names(:)
   integer,           allocatable, target :: tracer_types(:)
-  integer :: nb
+  integer :: nthrds, nb
 
 !-----------------------------------------------------------------------
 
@@ -635,6 +635,13 @@ subroutine atmos_model_init (Atmos, Time_init, Time, Time_step)
 
    allocate(DYCORE_Data(Atm_block%nblks))
 
+#ifdef _OPENMP
+   nthrds = omp_get_max_threads()
+#else
+   nthrds = 1
+#endif
+   allocate(GFS_interstitial(nthrds+1))
+
 !--- update GFS_control%jdat(8)
    bdat(:) = 0
    call get_date (Time_init, bdat(1), bdat(2), bdat(3),  &
@@ -688,7 +695,7 @@ subroutine atmos_model_init (Atmos, Time_init, Time, Time_step)
 
    call GFS_initialize (GFS_control, GFS_Statein, GFS_Stateout, GFS_Sfcprop, &
                         GFS_Coupling, GFS_Grid, GFS_Tbd, GFS_Cldprop, GFS_Radtend, &
-                        GFS_Intdiag, GFS_interstitial, Init_parm)
+                        GFS_Intdiag, Init_parm)
 
    !--- populate/associate the Diag container elements
    call GFS_externaldiag_populate (GFS_Diag, GFS_Control, GFS_Statein, GFS_Stateout,   &
