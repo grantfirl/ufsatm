@@ -7,7 +7,7 @@
   #url = https://github.com/NCAR/ccpp-framework
   #branch = main
   url = https://github.com/climbfuji/ccpp-framework
-  branch = bugfix/prebuild_case_insensitive_capgen_parser
+  branch = feature/pull_in_dev_20250724
 [submodule "ccpp/physics"]
   path = ccpp/physics
   #url = https://github.com/ufs-community/ccpp-physics
