@@ -5017,6 +5017,27 @@
   units = flag
   dimensions = ()
   type = logical
+[nt_c_l]
+  standard_name = prescribed_number_concentration_of_cloud_liquid_water_particles_in_air_over_land
+  long_name = volumetric number concentration of cloud liquid water droplets in air over land points
+  units = m-3
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[nt_c_o]
+  standard_name = prescribed_number_concentration_of_cloud_liquid_water_particles_in_air_over_ocean
+  long_name = volumetric number concentration of cloud liquid water droplets in air over ocean points
+  units = m-3
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[xnc_max]
+  standard_name = maximum_mass_number_concentration_of_cloud_liquid_water_particles_in_air_used_in_deposition_nucleation
+  long_name = maximum mass number concentration of cloud liquid water particles in air
+  units = kg-1
+  dimensions = ()
+  type = real
+  kind = kind_phys
 [gfs_phys_time_vary_is_init]
   standard_name = flag_for_gfs_phys_time_vary_interstitial_initialization
   long_name = flag carrying interstitial initialization status
