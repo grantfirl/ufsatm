@@ -1055,10 +1055,12 @@ module GFS_typedefs
     logical              :: thompson_mp_is_init=.false. !< Local scheme initialization flag
     real(kind=kind_phys) :: nt_c_l          !< prescribed cloud liquid water number concentration over land
     real(kind=kind_phys) :: nt_c_o          !< prescribed cloud liquid water number concentration over ocean
+    real(kind=kind_phys) :: av_i            !< transition value of coefficient matching at crossover from cloud ice to snow
     real(kind=kind_phys) :: xnc_max         !< maximum mass number concentration of cloud liquid water particles in air used in deposition nucleation
     real(kind=kind_phys) :: ssati_min       !< minimum supersaturation over ice threshold for deposition nucleation
     real(kind=kind_phys) :: Nt_i_max        !< maximum threshold number concentration of cloud ice water crystals in air
     real(kind=kind_phys) :: rr_min          !< multiplicative tuning parameter for microphysical sedimentation minimum threshold
+    
     
     !--- GFDL microphysical paramters
     logical              :: lgfdlmprad      !< flag for GFDL mp scheme and radiation consistency
@@ -3667,10 +3669,11 @@ module GFS_typedefs
     integer              :: decfl          = 8                  !< deformed CFL factor
     real(kind=kind_phys) :: nt_c_l         = 150.e6             !< prescribed cloud liquid water number concentration over land
     real(kind=kind_phys) :: nt_c_o         = 50.e6              !< prescribed cloud liquid water number concentration over ocean
+    real(kind=kind_phys) :: av_i           = -999.0             !< transition value of coefficient matching at crossover from cloud ice to snow
     real(kind=kind_phys) :: xnc_max        = 1000.e3            !< maximum mass number concentration of cloud liquid water particles in air used in deposition nucleation
     real(kind=kind_phys) :: ssati_min      = 0.15               !< minimum supersaturation over ice threshold for deposition nucleation
     real(kind=kind_phys) :: Nt_i_max       = 4999.e3            !< maximum threshold number concentration of cloud ice water crystals in air
-    real(kind=kind_phys) :: rr_min         = 1000.0
+    real(kind=kind_phys) :: rr_min         = 1000.0             !< multiplicative tuning parameter for microphysical sedimentation minimum threshold
     
     !--- GFDL microphysical parameters
     logical              :: lgfdlmprad     = .false.            !< flag for GFDLMP radiation interaction
@@ -4183,7 +4186,7 @@ module GFS_typedefs
                                mg_ncnst, mg_ninst, mg_ngnst, sed_supersat, do_sb_physics,   &
                                mg_alf,   mg_qcmin, mg_do_ice_gmao, mg_do_liq_liu,           &
                                ltaerosol, lthailaware, lradar, nsfullradar_diag, lrefres,   &
-                               ttendlim, ext_diag_thompson, nt_c_l, nt_c_o, xnc_max,        &
+                               ttendlim, ext_diag_thompson, nt_c_l, nt_c_o, av_i, xnc_max,  &
                                ssati_min, Nt_i_max, rr_min, dt_inner, lgfdlmprad,           &
                                sedi_semi, decfl,                                            &
                                nssl_cccn, nssl_alphah, nssl_alphahl,                        &
@@ -4923,6 +4926,7 @@ module GFS_typedefs
     Model%decfl            = decfl
     Model%nt_c_l           = nt_c_l
     Model%nt_c_o           = nt_c_o
+    Model%av_i             = av_i
     Model%xnc_max          = xnc_max
     Model%ssati_min        = ssati_min
     Model%Nt_i_max         = Nt_i_max
@@ -6379,6 +6383,7 @@ module GFS_typedefs
                                           ' decfl=',decfl, &
                                           ' nt_c_l=',nt_c_l, &
                                           ' nt_c_o=',nt_c_o, &
+                                          ' av_i=',av_i, &
                                           ' xnc_max=',xnc_max, &
                                           ' ssati_min',ssati_min, &
                                           ' Nt_i_max',Nt_i_max, &
@@ -6947,6 +6952,7 @@ module GFS_typedefs
         print *, ' decfl             : ', Model%decfl
         print *, ' nt_c_l            : ', Model%nt_c_l
         print *, ' nt_c_o            : ', Model%nt_c_o
+        print *, ' av_i              : ', Model%av_i
         print *, ' xnc_max           : ', Model%xnc_max
         print *, ' ssati_min         : ', Model%ssati_min
         print *, ' Nt_i_max          : ', Model%Nt_i_max
