@@ -906,6 +906,8 @@ module GFS_typedefs
     logical              :: lrseeds         !< flag to use host-provided random seeds
     integer              :: nrstreams       !< number of random number streams in host-provided random seed array
     logical              :: lextop          !< flag for using an extra top layer for radiation
+    real(kind_phys)      :: xr_con          !< Xu-Randall cloud fraction multiplicative constant
+    real(kind_phys)      :: xr_exp          !< Xu-Randall cloud fraction exponent constant
 
     ! RRTMGP
     logical              :: do_RRTMGP               !< Use RRTMGP
@@ -1279,7 +1281,7 @@ module GFS_typedefs
     real(kind=kind_phys) :: psauras(2)      !< [in] auto conversion coeff from ice to snow in ras
     real(kind=kind_phys) :: prauras(2)      !< [in] auto conversion coeff from cloud to rain in ras
     real(kind=kind_phys) :: wminras(2)      !< [in] water and ice minimum threshold for ras
-  
+
     integer              :: seed0           !< random seed for radiation
 
     real(kind=kind_phys) :: rbcr            !< Critical Richardson Number in the PBL scheme
@@ -3563,6 +3565,8 @@ module GFS_typedefs
     logical              :: lrseeds           = .false.      !< flag to use host-provided random seeds
     integer              :: nrstreams         = 2            !< number of random number streams in host-provided random seed array
     logical              :: lextop            = .false.      !< flag for using an extra top layer for radiation
+    real(kind_phys)      :: xr_con            = -999.0       !< Xu-Randall cloud fraction multiplicative constant          
+    real(kind_phys)      :: xr_exp            = -999.0       !< Xu-Randall cloud fraction exponent constant
     ! RRTMGP
     logical              :: do_RRTMGP           = .false.    !< Use RRTMGP?
     character(len=128)   :: active_gases        = ''         !< Character list of active gases used in RRTMGP
@@ -3805,7 +3809,7 @@ module GFS_typedefs
     logical              :: shinhong       = .false.                  !< flag for scale-aware Shinhong vertical turbulent mixing scheme
     logical              :: do_ysu         = .false.                  !< flag for YSU vertical turbulent mixing scheme
     logical              :: dspheat        = .false.                  !< flag for tke dissipative heating
-    logical              :: sa3dtke        = .false.                   !< flag for scale-aware 3D tke scheme
+    logical              :: sa3dtke        = .false.                  !< flag for scale-aware 3D tke scheme
     logical              :: hurr_pbl       = .false.                  !< flag for hurricane-specific options in PBL scheme
     logical              :: lheatstrg      = .false.                  !< flag for canopy heat storage parameterization
     logical              :: lseaspray      = .false.                  !< flag for sea spray parameterization
@@ -4157,7 +4161,7 @@ module GFS_typedefs
                                fhswr, fhlwr, levr, nfxr, iaerclm, iflip, isol, ico2, ialb,  &
                                isot, iems, iaer, icliq_sw, iovr, ictm, isubc_sw,            &
                                isubc_lw, lcrick, lcnorm, lwhtr, swhtr,                      &
-                               nhfrad, idcor, dcorr_con,                                    &
+                               nhfrad, idcor, dcorr_con, xr_con, xr_exp,                    &
                           ! --- RRTMGP
                                do_RRTMGP, active_gases, nGases, rrtmgp_root,                &
                                lw_file_gas, lw_file_clouds, rrtmgp_nBandsLW, rrtmgp_nGptsLW,&
@@ -4752,7 +4756,6 @@ module GFS_typedefs
     Model%lrseeds          = lrseeds
     Model%nrstreams        = nrstreams
     Model%lextop           = (ltp > 0)
-
     ! RRTMGP
     Model%do_RRTMGP           = do_RRTMGP
     Model%rrtmgp_nrghice      = rrtmgp_nrghice
@@ -5967,7 +5970,7 @@ module GFS_typedefs
 !--- BEGIN CODE FROM COMPNS_PHYSICS
 !--- shoc scheme
     if (do_shoc) then
-       if ((Model%imp_physics == Model%imp_physics_thompson) .or. &
+      if ((Model%imp_physics == Model%imp_physics_thompson) .or. &
             (Model%imp_physics == Model%imp_physics_tempo)) then
         print *,'SHOC is not currently compatible with Thompson/TEMPO  MP -- shutting down'
         stop
@@ -6508,7 +6511,34 @@ module GFS_typedefs
 !--- BEGIN CODE FROM GLOOPB
 !--- set up random number seed needed for RAS and old SAS and when cal_pre=.true.
 !    Model%imfdeepcnv < 0 when Model%ras = .true.
-
+    
+    if (xr_con > 0.0 .and. xr_exp > 0.0) then !values have been read in from namelist, so set them to read values
+      Model%xr_con = xr_con
+      Model%xr_exp = xr_exp
+    else  ! values have not been read in from namelist and should be set according to logic in radiation_clouds.f
+      if (Model%imp_physics == Model%imp_physics_zhao_carr .or. Model%imp_physics == Model%imp_physics_mg .or. Model%imp_physics == Model%imp_physics_fer_hires) then
+        if (.not. Model%lmfshal) then
+          !calls cloud_fraction_XuRandall()
+          Model%xr_con = 2000.0
+          Model%xr_exp = 0.25
+        else
+          !calls cloud_fraction_mass_flx_1()
+          Model%xr_con = 100.0
+          Model%xr_exp = 0.49
+        endif
+      else ! specifically used when progcld_thompson_wsm6 is called in radiation_clouds.f (see logic in that routine)
+        if (.not. Model%lmfshal) then
+          !calls cloud_fraction_XuRandall()
+          Model%xr_con = 2000.0
+          Model%xr_exp = 0.25
+        else
+          !calls cloud_fraction_mass_flx_2()
+          Model%xr_con = 2000.0
+          Model%xr_exp = 0.25
+        endif
+      endif     
+    endif
+    
     if (Model%imfdeepcnv <= 0 .or. Model%cal_pre ) then
       if (Model%random_clds) then
         seed0 = Model%idate(1) + Model%idate(2) + Model%idate(3) + Model%idate(4)
@@ -6869,6 +6899,8 @@ module GFS_typedefs
       print *, ' lrseeds           : ', Model%lrseeds
       print *, ' nrstreams         : ', Model%nrstreams
       print *, ' lextop            : ', Model%lextop
+      print *, ' xr_con            : ', Model%xr_con
+      print *, ' xr_exp            : ', Model%xr_exp
       if (Model%do_RRTMGP) then
         print *, ' rrtmgp_nrghice     : ', Model%rrtmgp_nrghice
         print *, ' do_GPsw_Glw        : ', Model%do_GPsw_Glw
