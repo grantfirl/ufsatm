@@ -192,7 +192,7 @@ contains
     ! [k, i] -> [i, k]
     ! bottom-up -> top-down ordering convention
     do iCol = 1, nCellsSolve
-       physics_state % tgrs(iCol,:)   = MPAS_state % theta(nVertLevels:1:-1,iCo)
+       physics_state % tgrs(iCol,:)   = MPAS_state % theta(nVertLevels:1:-1,iCol)
        physics_state % ugrs(iCol,:)   = MPAS_state % ux(nVertLevels:1:-1,iCol)
        physics_state % vgrs(iCol,:)   = MPAS_state % uy(nVertLevels:1:-1,iCol)
        physics_state % phil(iCol,:)   = MPAS_state % zz(nVertLevels:1:-1,iCol)
