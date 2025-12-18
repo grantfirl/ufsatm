@@ -335,21 +335,21 @@
   standard_name = tendency_of_convective_transportable_tracers
   long_name = array to contain tendencies of cloud water and other convective trans. tracers
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension,number_of_tracers_for_convective_transport)
+  dimensions = (horizontal_dimension,vertical_layer_dimension,number_of_tracers_for_convective_transport)
   type = real
   kind = kind_phys
 [dclw(:,:,1)]
   standard_name = tendency_of_ice_water_mixing_ratio_convective_transport_tracer
   long_name = tendency of ratio of mass of ice water to mass of dry air plus vapor (without condensates) in the convectively transported tracer array
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [dclw(:,:,2)]
   standard_name = tendency_of_cloud_condensed_water_mixing_ratio_convective_transport_tracer
   long_name = tendency of ratio of mass of cloud water to mass of dry air plus vapor (without condensates) in the convectively transported tracer array
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [clx]
@@ -2029,42 +2029,42 @@
   standard_name = tendency_of_tracer_concentration
   long_name = tendency of tracer concentration calculated by one physics scheme
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension,number_of_tracers)
+  dimensions = (horizontal_dimension,vertical_layer_dimension,number_of_tracers)
   type = real
   kind = kind_phys
 [ten_q(:,:,index_of_specific_humidity_in_tracer_concentration_array)]
   standard_name = tendency_of_specific_humidity
   long_name = water vapor specific humidity tendency
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_q(:,:,index_of_cloud_liquid_water_mixing_ratio_in_tracer_concentration_array)]
   standard_name = tendency_of_cloud_liquid_water_mixing_ratio
   long_name = cloud condensed water mixing ratio tendency
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_q(:,:,index_of_cloud_ice_mixing_ratio_in_tracer_concentration_array)]
   standard_name = tendency_of_cloud_ice_mixing_ratio
   long_name = cloud condensed water mixing ratio tendency
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_q(:,:,index_of_rain_mixing_ratio_in_tracer_concentration_array)]
   standard_name = tendency_of_rain_mixing_ratio
   long_name = tendency of ratio of mass of rain water tendency to mass of dry air plus vapor (without condensates)
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_q(:,:,index_of_snow_mixing_ratio_in_tracer_concentration_array)]
   standard_name = tendency_of_snow_mixing_ratio
   long_name = tendency of ratio of mass of snow water tendency to mass of dry air plus vapor (without condensates)
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_snow_mixing_ratio_in_tracer_concentration_array > 0)
@@ -2072,7 +2072,7 @@
   standard_name = tendency_of_graupel_mixing_ratio
   long_name = tendency of ratio of mass of graupel tendency to mass of dry air plus vapor (without condensates)
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_graupel_mixing_ratio_in_tracer_concentration_array > 0)
@@ -2080,7 +2080,7 @@
   standard_name = tendency_of_hail_mixing_ratio
   long_name = ratio of mass of hail tendency to mass of dry air plus vapor (without condensates)
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys 
   active = (index_of_hail_mixing_ratio_in_tracer_concentration_array > 0) 
@@ -2088,7 +2088,7 @@
   standard_name = tendency_of_cloud_condensation_nuclei_number_concentration
   long_name = number concentration of cloud condensation nuclei tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_cloud_condensation_nuclei_number_concentration_in_tracer_concentration_array > 0 )
@@ -2096,7 +2096,7 @@
   standard_name = tendency_of_mass_number_concentration_of_cloud_ice_water_crystals_in_air
   long_name = number concentration of ice tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_cloud_ice_in_tracer_concentration_array > 0)
@@ -2104,7 +2104,7 @@
   standard_name = tendency_of_mass_number_concentration_of_snow
   long_name = number concentration of snow tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_snow_in_tracer_concentration_array > 0)
@@ -2112,7 +2112,7 @@
   standard_name = tendency_of_mass_number_concentration_of_graupel
   long_name = number concentration of graupel tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_graupel_in_tracer_concentration_array > 0)
@@ -2120,7 +2120,7 @@
   standard_name = tendency_of_mass_number_concentration_of_hail
   long_name = number concentration of hail tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_mass_number_concentration_of_hail_in_tracer_concentration_array > 0 )
@@ -2128,7 +2128,7 @@
   standard_name = tendency_of_graupel_volume
   long_name = graupel volume tendency
   units = m3 kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_graupel_volume_in_tracer_concentration_array > 0 )
@@ -2136,7 +2136,7 @@
   standard_name = tendency_of_hail_volume
   long_name = hail volume tendency
   units = m3 kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_hail_volume_in_tracer_concentration_array > 0 )
@@ -2144,7 +2144,7 @@
   standard_name = tendency_of_mass_number_concentration_of_rain_water_in_air
   long_name = number concentration of rain tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_rain_in_tracer_concentration_array > 0)
@@ -2152,7 +2152,7 @@
   standard_name = tendency_of_mass_number_concentration_of_cloud_liquid_water_particles_in_air
   long_name = number concentration of cloud droplets (liquid) tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_cloud_droplets_in_tracer_concentration_array > 0)
@@ -2160,7 +2160,7 @@
   standard_name = tendency_of_mass_number_concentration_of_hygroscopic_aerosols
   long_name = number concentration of water-friendly aerosols tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_hygroscopic_aerosols_in_tracer_concentration_array > 0)
@@ -2168,7 +2168,7 @@
   standard_name = tendency_of_mass_number_concentration_of_nonhygroscopic_ice_nucleating_aerosols
   long_name = number concentration of ice-friendly aerosols tendency
   units = kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_number_concentration_of_nonhygroscopic_ice_nucleating_aerosols_in_tracer_concentration_array > 0)
@@ -2176,7 +2176,7 @@
   standard_name = tendency_of_cloud_area_fraction_in_atmosphere_layer
   long_name = cloud fraction tendency
   units = frac s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_cloud_area_fraction_in_atmosphere_layer_in_tracer_concentration_array > 0)
@@ -2184,7 +2184,7 @@
   standard_name = tendency_of_mass_weighted_rime_factor
   long_name = mass weighted rime factor tendency
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = (index_of_mass_weighted_rime_factor_in_tracer_concentration_array > 0)
@@ -2192,7 +2192,7 @@
   standard_name = tendency_of_reflectivity_of_rain
   long_name = reflectivity of rain tendency
   units = m6 kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_reflectivity_of_rain_in_tracer_concentration_array > 0 )
@@ -2200,7 +2200,7 @@
   standard_name = tendency_of_reflectivity_of_graupel
   long_name = reflectivity of graupel tendency
   units = m6 kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_reflectivity_of_graupel_in_tracer_concentration_array > 0 )
@@ -2208,7 +2208,7 @@
   standard_name = tendency_of_reflectivity_of_hail
   long_name = reflectivity of hail tendency
   units = m6 kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_reflectivity_of_hail_in_tracer_concentration_array > 0 )
@@ -2216,7 +2216,7 @@
   standard_name = tendency_of_ozone_concentration
   long_name = ozone concentration tendency
   units = kg kg-1 s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
   active = ( index_of_ozone_mixing_ratio_in_tracer_concentration_array > 0 )
@@ -2224,21 +2224,21 @@
   standard_name = tendency_of_air_temperature
   long_name = tendency of air temperature calculated by one physics scheme
   units = K s-1
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_u]
   standard_name = tendency_of_x_wind
   long_name = tendency of x wind calculated by one physics scheme
   units = m s-2
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [ten_v]
   standard_name = tendency_of_y_wind
   long_name = tendency of y wind calculated by one physics scheme
   units = m s-2
-  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
 [theta]
