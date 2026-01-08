@@ -12,7 +12,7 @@ module ufs_mpas_module
   use mpas_derived_types,  only : core_type, domain_type, mpas_Clock_type
   use mpas_derived_types,  only : MPAS_Time_Type
   use mpas_kind_types,     only : StrKIND
-  !use mpas_atm_boundaries, only : LBC_intv_end
+  use mpas_atm_boundaries, only : LBC_intv_end
   implicit none
 
   public
@@ -27,9 +27,6 @@ module ufs_mpas_module
   integer, allocatable :: index_constituent_to_mpas_scalar(:)
   integer, allocatable :: index_mpas_scalar_to_constituent(:)
   logical, allocatable :: is_water_species(:)
-
-  private
-  type (MPAS_Time_Type) :: LBC_intv_end
   
   !> #########################################################################################
   !>
@@ -48,8 +45,8 @@ module ufs_mpas_module
        var_info_type('lbc_u'                           , 'real'      , 2), &
        var_info_type('lbc_w'                           , 'real'      , 2), &
        var_info_type('lbc_rho'                         , 'real'      , 2), &
-       var_info_type('lbc_theta'                       , 'real'      , 2)  &
-       !var_info_type('lbc_scalars'                     , 'real'      , 3)  &
+       var_info_type('lbc_theta'                       , 'real'      , 2), &
+       var_info_type('lbc_scalars'                     , 'real'      , 3)  &
        ]
 
   !> #########################################################################################
@@ -144,7 +141,7 @@ module ufs_mpas_module
        var_info_type('initial_time'                    , 'character' , 0), &
        var_info_type('rho'                             , 'real'      , 2), &
        var_info_type('rho_base'                        , 'real'      , 2), &
-       !var_info_type('scalars'                         , 'real'      , 3), &
+       var_info_type('scalars'                         , 'real'      , 3), &
        var_info_type('theta'                           , 'real'      , 2), &
        var_info_type('theta_base'                      , 'real'      , 2), &
        var_info_type('u'                               , 'real'      , 2), &
@@ -717,12 +714,12 @@ contains
    end if
 
    !
-   ! In UFS, the first scalar (if there are any) is always sphum (specific humidity); if this is not
+   ! In UFS, the first scalar (if there are any) is always qv (specific humidity); if this is not
    ! the case, something has gone wrong
    !
    if (size(constituent_name) > 0) then
-      if (trim(constituent_name(1)) /= 'sphum') then
-         call mpas_log_write(trim(subname)//': ERROR: The first constituent is not sphum', messageType=MPAS_LOG_ERR)
+      if (trim(constituent_name(1)) /= 'qv') then
+         call mpas_log_write(trim(subname)//': ERROR: The first constituent is not qv', messageType=MPAS_LOG_ERR)
          ierr = 1
          return
       end if
@@ -1394,7 +1391,7 @@ contains
  !>
  !> ########################################################################################
  subroutine read_stream(stream, timeLevel, when, whence, actualWhen, ierr)
-   use mpas_io_streams,     only : mpas_readstream
+   use mpas_io_streams,     only : MPAS_readStream, MPAS_streamTime
    use mpas_derived_types,  only : MPAS_TimeInterval_type
    use mpas_derived_types,  only : mpas_pool_type, mpas_stream_noerr, mpas_stream_type
 
@@ -1405,15 +1402,10 @@ contains
    character (len=*), intent(out), optional :: actualWhen
    integer, intent(out) :: ierr
 
-   type (MPAS_Time_type) :: now_time
-   type (MPAS_TimeInterval_type) :: filename_interval
-   integer :: local_ierr
-   character (len=StrKIND) :: temp_filename
-
-   !call mpas_set_time(now_time, dateTimeString=whence, ierr=local_ierr)
-   !call mpas_set_timeInterval(filename_interval, timeString=stream % filename_interval)
-   
-   call mpas_readstream(stream, timeLevel, ierr=ierr)
+   call MPAS_readStream(stream, timeLevel, ierr=ierr)
+   if (present(actualWhen)) then
+      call MPAS_streamTime(stream, timeLevel, actualWhen, ierr=ierr)
+   endif
    
  end subroutine read_stream
  !> ########################################################################################

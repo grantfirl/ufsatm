@@ -96,7 +96,8 @@ contains
   !> Follows mpas_init() in MPAS-Model/src/driver/mpas_subdriver.F
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_init(Cfg, time_start, time_end, total_time, calendar, logUnits)
+  subroutine ufs_mpas_init(Cfg, time_start, time_end, total_time, calendar, logUnits,        &
+       mpas_from_ufs_cnst, ufs_from_mpas_cnst)
     ! MPAS
     use mpas_pool_routines,         only : mpas_pool_add_config, mpas_pool_get_subpool
     use mpas_pool_routines,         only : mpas_pool_add_dimension, mpas_pool_get_field
@@ -126,6 +127,7 @@ contains
     integer,                 intent(in   ) :: time_start(6), time_end(6), logUnits(2)
     integer,                 intent(in   ) :: total_time
     character(17),           intent(in   ) :: calendar
+    integer, pointer,        intent(in   ) :: mpas_from_ufs_cnst(:), ufs_from_mpas_cnst(:)
     ! Locals
     character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_init'
     integer :: i, ndate1, ndate2, tod, ierr, ik, kk
@@ -261,6 +263,11 @@ contains
     call mpas_pool_add_dimension(state, 'moist_start', 1)
     call mpas_pool_add_dimension(state, 'moist_end', Cfg % nwat)
     nullify (state)
+
+    call ufs_mpas_define_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
+    if (ierr /= 0) then
+       call mpp_error(FATAL,'ERROR: Set-up of constituents for MPAS-A dycore failed.')
+    end if
     
     !
     ! Read in static (invariant) data
@@ -401,7 +408,7 @@ contains
     ! Read in initial-conditions
     !
     call mpas_log_write('Reading in MPAS initial condition stream.')
-    call dyn_mpas_read_write_stream(clock, 'r', 'input-scalars', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    call dyn_mpas_read_write_stream(clock, 'r', 'input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
 
     !
     ! Read in restart data.
@@ -607,7 +614,6 @@ contains
           !if (timeNow .GT. timeLBCnew) then
           call mpas_log_write('--------------------------------------------------')
           call mpas_log_write('Update lateral boundary conditions for timestep '//trim(timeStamp))
-          !call mpas_log_write('   '//
           call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .false., ierr)
           if (ierr /= 0) then
              call mpas_log_write('Failed to process LBC data at next time after '//trim(timeStamp), messageType=MPAS_LOG_ERR)
