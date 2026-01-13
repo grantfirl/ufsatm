@@ -108,7 +108,6 @@ contains
     use ufs_mpas_subdriver, only : MPAS_control_type
     use ufs_mpas_subdriver, only : ufs_mpas_init
     use ufs_mpas_subdriver, only : ufs_mpas_open_init, ufs_mpas_open_lbc
-    use ufs_mpas_module,    only : ufs_mpas_define_scalars
     use ufs_mpas_module,    only : constituent_name, is_water_species
     use atmos_coupling_mod, only : ufs_mpas_to_physics
     use MPAS_init,          only : MPAS_initialize
@@ -160,16 +159,35 @@ contains
        ierr = check_nml_error(io, 'atmos_model_nml')
     endif
 
-    ! Get tracer name(s) and type(s).
+    !
+    ! Handle constituents (scalars/tracers)
+    !
+
+    ! Get constituent name(s) and type(s).
+    ! Active constituents are defined in the FMS "field_table".
     call get_number_tracers(MODEL_ATMOS, num_tracers=Cfg % nConstituents)
     allocate (Cfg % tracer_names(Cfg % nConstituents), Cfg % tracer_types(Cfg % nConstituents))
     do i = 1, Cfg % nConstituents
        call get_tracer_names(MODEL_ATMOS, i, Cfg % tracer_names(i))
     enddo
     call get_atmos_tracer_types(Cfg % tracer_types)
+
+    ! Get number of water species.
+    ! DJS Asks? With FV3, this is set during dycore initialization. How do we get this information
+    ! here? Does MPAS have a routine for this?
+    !
+    ! It would be simple, albeit not the most elegant thing, but we could create a simple routine
+    ! that has a list of "known MPAS water species" and compare each "tracer_name" to that.
+    ! A more robust solution IMO would be to quiery the field table entries for a "water-species"
+    ! attribute, or something along those lines. Actually, I think this is straightforward if we
+    ! extend ../ufsatm_util.F90.
     
-    ! DJS2025: There are 9 tracers, but only 6 are water. How do we get to 6?
-    ! With FV3, this is set during dycore initialization. Set and Revisit later.
+    !
+    ! From field_tables:
+    ! For RRFS   MPAS we have: 11 water tracers (ql,qc,qi,qr,qs,qg,nc,nc,ni,nr,ng)
+    !                           2 prog. tracers (o3,sgs-tke)
+    ! For GFSv17 MPAS we have:  6 water species (ql,qc,qi,qr,qs,qg)
+    !                           4 prog. tracers (o3,sgs-tke,cld_amt,sigma_b)
     Cfg % nwat = 6
 
     call get_number_tracers(MODEL_ATMOS, num_tracers=Cfg % nConstituents)
@@ -204,12 +222,7 @@ contains
        logunits(2) = mpas_logfile_handle
     endif
 
-    call ufs_mpas_init(Cfg, times, timee, ttime, calendar, logUnits)
-
-    call ufs_mpas_define_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
-    if (ierr /= 0) then
-       call mpp_error(FATAL,'ERROR: Set-up of constituents for MPAS-A dycore failed.')
-    end if
+    call ufs_mpas_init(Cfg, times, timee, ttime, calendar, logUnits, mpas_from_ufs_cnst, ufs_from_mpas_cnst)
 
     !> #########################################################################################
     !> #########################################################################################
