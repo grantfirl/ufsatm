@@ -280,7 +280,7 @@ contains
     ! in a different "piece" later, but copying the Updated state from the dycore before calling
     ! the microphsyics.
     !
-    call ufs_mpas_to_physics(UFSATM_statein)
+    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_grid)
 
     ! Initialize the CCPP framework
     call CCPP_step (step="init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')

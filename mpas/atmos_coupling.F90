@@ -106,7 +106,10 @@ module atmos_coupling_mod
                                                   ! layer interface [1] (nlev)
      real(mpas_kind), pointer :: fzp(:)           ! Interp weight from k-1 layer midpoint to k
                                                   ! layer interface [dimensionless] (nlev)
-
+     ! MPAS horizontal coordinate (invariant)
+     real(mpas_kind), pointer :: lat(:)           ! latitude (ncol)
+     real(mpas_kind), pointer :: lon(:)           ! longitude (ncol)
+     
      ! Indices for tracer (scalar) indices
      integer, pointer  :: index_qv                ! Tracer index for water-vapor mixing-ratio
      
@@ -147,14 +150,14 @@ contains
   !> CCPP "state" needed by the physics.
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_to_physics(physics_state)
-    use GFS_typedefs,         only : GFS_statein_type
+  subroutine ufs_mpas_to_physics(physics_state, physics_grid)
+    use GFS_typedefs,         only : GFS_statein_type, GFS_grid_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use atm_core,             only : atm_compute_output_diagnostics
     use mpas_kind_types,      only : RKIND
     ! Arguments
-    type(GFS_statein_type),   intent(inout) :: physics_state
+    type(GFS_statein_type),   intent(inout) :: physics_state, physics_grid
     ! Locals
     type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: state_pool
@@ -186,6 +189,8 @@ contains
     call mpas_pool_get_array(mesh_pool,  'zz',                     MPAS_state % zz)
     call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=1)
     call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=1)
+    call mpas_pool_get_array(mesh_pool,  'latCell',                MPAS_state % lat)
+    call mpas_pool_get_array(mesh_pool,  'lonCell',                MPAS_state % lon)
     
     ! Copy fields from MPAS data containers to physics data containers.
     ! [k, i] -> [i, k]
@@ -202,7 +207,10 @@ contains
           physics_state % qgrs(iCol,:,iTracer) = MPAS_state % tracers(iTracer,nVertLevels:1:-1,iCol)
        enddo
     enddo
-
+    
+    physics_grid % xlat(:) = MPAS_state % lat(:)
+    physics_grid % xlon(:) = MPAS_state % lon(:)
+    
     ! Compute hydrostatic pressures
     allocate(MPAS_state % pmid(   nVertLevels,   nCellsSolve))
     allocate(MPAS_state % pmiddry(nVertLevels,   nCellsSolve))
