@@ -107,7 +107,7 @@ contains
     use mpas_bootstrapping,         only : mpas_bootstrap_framework_phase1
     use mpas_bootstrapping,         only : mpas_bootstrap_framework_phase2
     use mpas_stream_inquiry,        only : mpas_stream_inquiry_new_streaminfo
-    use mpas_derived_types,         only : mpas_pool_type, mpas_IO_NETCDF, field3dReal
+    use mpas_derived_types,         only : mpas_pool_type, mpas_IO_NETCDF, field3dReal, MPAS_STREAM_LATEST_BEFORE, MPAS_STREAM_MGR_NOERR, MPAS_LOG_ERR
     use mpas_kind_types,            only : StrKIND, RKIND
     use mpas_log,                   only : mpas_log_write
     use atm_core_interface,         only : atm_setup_core, atm_setup_domain
@@ -131,10 +131,10 @@ contains
     ! Locals
     character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_init'
     integer :: i, ndate1, ndate2, tod, ierr, ik, kk
-    type (mpas_pool_type), pointer :: state, mesh, tend
+    type (mpas_pool_type), pointer :: state, mesh, tend, lbc
     type (field3dReal), pointer :: scalarsField
     character (len=StrKIND), pointer :: initial_time, config_start_time
-    integer, pointer :: num_scalars
+    integer, pointer :: num_scalars, mpas_from_ufs_cnst2(:), ufs_from_mpas_cnst2(:)
 
     ! Setup MPAS infrastructure
     allocate(corelist, stat=ierr)
@@ -258,21 +258,41 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
     call mpas_pool_get_dimension(state, 'num_scalars', num_scalars)
     call mpas_pool_add_dimension(domain_ptr % blocklist % dimensions, 'num_scalars', num_scalars)
-    nullify(num_scalars)
+
+    !
+    ! Setup scalars for State pool and scalars for Tend pool
+    !
     call mpas_pool_add_dimension(state, 'index_qv', 1)
     call mpas_pool_add_dimension(state, 'moist_start', 1)
     call mpas_pool_add_dimension(state, 'moist_end', Cfg % nwat)
     nullify (state)
-
     call ufs_mpas_define_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
     if (ierr /= 0) then
        call mpp_error(FATAL,'ERROR: Set-up of constituents for MPAS-A dycore failed.')
     end if
-    
+
+    !
+    ! Setup scalars for LBC pool and scalars_tend for LBC pool.
+    !
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'lbc', lbc)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions, 'num_scalars', num_scalars)
+    call mpas_pool_add_dimension(lbc, 'num_scalars', num_scalars)
+    call mpas_pool_add_dimension(lbc, 'moist_start', 1)
+    call mpas_pool_add_dimension(lbc, 'moist_end', Cfg % nwat)
+    nullify (lbc)
+    call ufs_mpas_define_lbc_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
+    if (ierr /= 0) then
+       call mpp_error(FATAL,'ERROR: Set-up of LBC constituents for MPAS-A dycore failed.')
+    end if
+
     !
     ! Read in static (invariant) data
     !
     call dyn_mpas_read_write_stream(domain_ptr % clock,  'r', 'invariant',     pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    if (ierr /= MPAS_STREAM_MGR_NOERR) then
+       call mpas_log_write('Could not read from ''invariant'' stream ',messageType=MPAS_LOG_ERR)
+       call mpp_error(FATAL,'ERROR: Could not read from ''invariant'' stream ')
+    end if
 
     ! FROM CAM/driver/cam_mpas_subdriver.F90
     ! Compute unit vectors giving the local north and east directions as well as
@@ -323,7 +343,7 @@ contains
   subroutine ufs_mpas_atm_core_init(Cfg)
     use mpas_kind_types,            only : StrKIND, RKIND
     use mpas_derived_types,         only : mpas_pool_type, mpas_Time_Type, field0DReal, field2dreal
-    use mpas_derived_types,         only : block_type
+    use mpas_derived_types,         only : block_type, field3dreal, MPAS_STREAM_MGR_NOERR, MPAS_LOG_ERR
     use mpas_domain_routines,       only : mpas_pool_get_dimension
     use mpas_pool_routines,         only : mpas_pool_get_subpool
     use mpas_pool_routines,         only : mpas_pool_initialize_time_levels, mpas_pool_get_config
@@ -355,8 +375,7 @@ contains
     character(len=StrKIND) :: startTimeStamp
     character (len=StrKIND), pointer :: xtime
     character (len=StrKIND), pointer :: initial_time1, initial_time2
-    type(field0dreal), pointer :: field_0d_real
-    type(field2dreal), pointer :: field_2d_real
+    real(RKIND), dimension(:,:,:), pointer :: field_3d_real
     logical, pointer :: config_apply_lbcs
     real(RKIND), dimension(:,:), pointer :: theta1
 
@@ -409,11 +428,20 @@ contains
     !
     call mpas_log_write('Reading in MPAS initial condition stream.')
     call dyn_mpas_read_write_stream(clock, 'r', 'input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    if (ierr /= MPAS_STREAM_MGR_NOERR) then
+       call mpas_log_write('Could not read from ''input'' stream ',messageType=MPAS_LOG_ERR)
+       call mpp_error(FATAL,'ERROR: Could not read from ''input'' stream ')
+    end if
+
+    ! What is the shape of scalars?
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
+    call mpas_pool_get_array(state, 'scalars',field_3d_real, timelevel=1)
+    call mpas_log_write('IMP_DIAG ufs_mpas_atm_core_init: shape(scalars)           = '//stringify([shape(field_3d_real)]))
 
     !
     ! Read in restart data.
     !
-    !call mpas_log_write('Reading in MPAS restart stream.'
+    !call mpas_log_write('Reading in MPAS restart stream.')
     !call dyn_mpas_read_write_stream(clock, 'r', 'restart', ierr=ierr, timeLevel=1, whence=mpas_NOW)
 
 
@@ -614,7 +642,7 @@ contains
           !if (timeNow .GT. timeLBCnew) then
           call mpas_log_write('--------------------------------------------------')
           call mpas_log_write('Update lateral boundary conditions for timestep '//trim(timeStamp))
-          call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .false., ierr)
+          !call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .false., ierr)
           if (ierr /= 0) then
              call mpas_log_write('Failed to process LBC data at next time after '//trim(timeStamp), messageType=MPAS_LOG_ERR)
              return

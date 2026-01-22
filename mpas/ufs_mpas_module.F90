@@ -467,6 +467,8 @@ contains
     nVertLevels = nVertLevels_ptr
     nScalars = nScalars_ptr
     index_qv = index_qv_ptr
+    call mpas_log_write('IMP_DIAG ufs_mpas_atm_update_bdy_tend: nlbc_scalars       = '//stringify([nScalars_ptr]))
+    call mpas_log_write('IMP_DIAG ufs_mpas_atm_update_bdy_tend: shape(lbc_scalars) = '//stringify([shape(scalars))
 
     ! Compute lbc_rho_zz
     do k=1,nVertLevels
@@ -542,7 +544,10 @@ contains
              lbc_tend_rho(k,iCell) = (rho(k,iCell) - lbc_tend_rho(k,iCell)) * dt
           end do
        end do
- 
+
+       call mpas_log_write('IMP_DIAG ufs_mpas_atm_update_bdy_tend: nCells             = '//stringify([nCells]))
+       call mpas_log_write('IMP_DIAG ufs_mpas_atm_update_bdy_tend: nVertLevels        = '//stringify([nVertLevels]))
+       call mpas_log_write('IMP_DIAG ufs_mpas_atm_update_bdy_tend: nScalars           = '//stringify([nScalars]))
        do iCell=1,nCells+1
           do k=1,nVertLevels
              do j = 1,nScalars
@@ -860,6 +865,86 @@ contains
    call mpas_pool_add_dimension(tendPool, 'moist_end', num_moist)
 
  end subroutine ufs_mpas_define_scalars
+
+ !> ########################################################################################
+ !>
+ !> ########################################################################################
+ subroutine ufs_mpas_define_lbc_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
+   use mpas_derived_types, only : mpas_pool_type, field3dReal, MPAS_LOG_ERR
+   use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_field
+   use mpas_pool_routines, only : mpas_pool_get_dimension, mpas_pool_add_dimension
+   use mpas_attlist,       only : mpas_add_att
+   use mpas_log,           only : mpas_log_write
+
+   ! Arguments
+   integer, dimension(:), pointer :: mpas_from_ufs_cnst, ufs_from_mpas_cnst
+   integer, intent(out) :: ierr
+
+   ! Local variables
+   character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_define_lbc_scalars'
+   type (mpas_pool_type), pointer :: lbcPool
+   integer, pointer :: num_scalars
+   integer :: i, j, timeLevs, num_moist
+   type (field3dReal), pointer :: scalarsField
+
+   ierr = 0
+
+   !
+   ! Define lbc_scalars
+   !
+   nullify(lbcPool)
+   call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'lbc', lbcPool)
+
+   if (.not. associated(lbcPool)) then
+      call mpas_log_write(trim(subname)//': ERROR: The ''lbc'' pool was not found.', &
+                          messageType=MPAS_LOG_ERR)
+      ierr = 1
+      return
+   end if
+
+   nullify(num_scalars)
+   call mpas_pool_get_dimension(lbcPool, 'num_scalars', num_scalars)
+
+   !
+   ! The num_scalars dimension should have been defined by atm_core_interface::atm_allocate_lbc_scalars, and
+   ! if this dimension does not exist, something has gone wrong.
+   !
+   if (.not. associated(num_scalars)) then
+      call mpas_log_write(trim(subname)//': ERROR: The ''num_scalars'' dimension does not exist in the ''lbc'' pool.', &
+                          messageType=MPAS_LOG_ERR)
+      ierr = 1
+      return
+   end if
+
+   timeLevs = 2
+
+   do i = 1, timeLevs
+      nullify(scalarsField)
+      call mpas_pool_get_field(lbcPool, 'lbc_scalars', scalarsField, timeLevel=i)
+
+      if (.not. associated(scalarsField)) then
+         call mpas_log_write(trim(subname)//': ERROR: The ''lbc_scalars'' field was not found in the ''lbc'' pool', &
+                             messageType=MPAS_LOG_ERR)
+         ierr = 1
+         return
+      end if
+
+      !if (i == 1) call mpas_pool_add_dimension(lbcPool, 'index_qv', 1)
+      scalarsField % constituentNames(1) = 'lbc_qv'
+      call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg kg^{-1}')
+      call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Water vapor mixing ratio')
+
+      do j = 2, size(constituent_name)
+         scalarsField % constituentNames(j) = 'lbc_'//trim(constituent_name(mpas_from_ufs_cnst(j)))
+         call mpas_log_write('IMP_DIAG scalarsField % constituentNames(j) = '//trim(scalarsField % constituentNames(j)))
+      end do
+
+   end do
+
+   call mpas_pool_add_dimension(lbcPool, 'moist_start', 1)
+   call mpas_pool_add_dimension(lbcPool, 'moist_end', num_moist)
+
+ end subroutine ufs_mpas_define_lbc_scalars
  
  !> ########################################################################################
  !>
@@ -2350,11 +2435,14 @@ contains
       case (3)
          call mpas_pool_get_field(domain_ptr % blocklist % allfields, &
               trim(adjustl(var_info % name)), field_3d_real, timelevel=1)
-
+          call mpas_log_write('IMP_DIAG check_variable_status name = '//trim(adjustl(var_info % name)))
          if (.not. associated(field_3d_real)) then
             call mpp_error(FATAL,subname//'Failed to find variable "' // trim(adjustl(var_info % name)) // '"')
          end if
-
+         call mpas_log_write('IMP_DIAG check_variable_status vararray = '//stringify([field_3d_real % isvararray]))
+         if (associated(field_3d_real % constituentnames)) then
+             call mpas_log_write('IMP_DIAG check_variable_status nconst   = '//stringify([size(field_3d_real % constituentnames)]))
+         end if
          if (field_3d_real % isvararray .and. associated(field_3d_real % constituentnames)) then
             allocate(var_name_list(size(field_3d_real % constituentnames)), stat=ierr)
 
@@ -2364,7 +2452,9 @@ contains
 
             var_name_list(:) = field_3d_real % constituentnames(:)
          end if
-
+         if (associated(field_3d_real % constituentnames)) then
+             call mpas_log_write('IMP_DIAG check_variable_status nconst2  = '//stringify([size(field_3d_real % constituentnames)]))
+         end if
          nullify(field_3d_real)
       case (4)
          call mpas_pool_get_field(domain_ptr % blocklist % allfields, &
@@ -2413,6 +2503,7 @@ contains
            '" for "' // trim(adjustl(var_info % name)) // '"')
    end select
 
+   call mpas_log_write('IMP_DIAG check_variable_status 1')
    if (.not. allocated(var_name_list)) then
       allocate(var_name_list(1), stat=ierr)
 
@@ -2422,7 +2513,7 @@ contains
 
       var_name_list(1) = var_info % name
    end if
-
+   call mpas_log_write('IMP_DIAG check_variable_status 2')
    allocate(var_is_present(size(var_name_list)), stat=ierr)
 
    if (ierr /= 0) then
@@ -2430,14 +2521,14 @@ contains
    end if
 
    var_is_present(:) = .false.
-
+   call mpas_log_write('IMP_DIAG check_variable_status 3')
    allocate(var_is_tkr_compatible(size(var_name_list)), stat=ierr)
    if (ierr /= 0) then
       call mpp_error(FATAL,subname//'Failed to allocate var_is_tkr_compatible')
    end if
 
    var_is_tkr_compatible(:) = .false.
-
+   call mpas_log_write('IMP_DIAG check_variable_status 4')
    if (.not. associated(pio_file)) then
       return
    end if
@@ -2448,11 +2539,12 @@ contains
 
    call mpas_log_write('Checking variable "' // trim(adjustl(var_info % name)) // &
         '" for presence and TKR compatibility')
-
+   call mpas_log_write('IMP_DIAG check_variable_status 5 size(var_name_list) = '//stringify([size(var_name_list)]))
    do i = 1, size(var_name_list)
       ! Check if the variable is present on the file.
+      call mpas_log_write('IMP_DIAG check_variable_status 5 var_name_list(i) = '//trim(adjustl(var_name_list(i))))
       ierr = pio_inq_varid(pio_file, trim(adjustl(var_name_list(i))), varid)
-
+      call mpas_log_write('IMP_DIAG check_variable_status 5b')
       if (ierr /= pio_noerr) then
          cycle
       end if
@@ -2492,10 +2584,10 @@ contains
       case default
          cycle
       end select
-
+      call mpas_log_write('IMP_DIAG check_variable_status 5c')
       ! Check if the variable is TK"R" compatible between MPAS and the file.
       ierr = pio_inq_varndims(pio_file, varid, varndims)
-
+      call mpas_log_write('IMP_DIAG check_variable_status 5d')
       if (ierr /= pio_noerr) then
          cycle
       end if
@@ -2506,7 +2598,7 @@ contains
 
       var_is_tkr_compatible(i) = .true.
    end do
-
+   call mpas_log_write('IMP_DIAG check_variable_status 6')
    call mpas_log_write('var_name_list = ' // stringify(var_name_list))
    call mpas_log_write('var_is_present = ' // stringify(var_is_present))
    call mpas_log_write('var_is_tkr_compatible = ' // stringify(var_is_tkr_compatible))
