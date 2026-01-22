@@ -14,6 +14,7 @@ module atmos_coupling_mod
   public :: ufs_microphysics_to_mpas
   public :: ufs_mpas_to_microphysics
   public :: ufs_mpas_grid_to_physics
+  public :: ufs_mpas_sfc_to_physics
 
   !> #######################################################################################
   !> MPAS_statein_type
@@ -456,5 +457,47 @@ contains
     end do
     
   end subroutine ufs_mpas_grid_to_physics
+  
+  subroutine ufs_mpas_sfc_to_physics(physics_sfcprop)
+    use GFS_typedefs,         only : GFS_sfcprop_type
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+    
+    ! Arguments
+    type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
+    ! Locals
+    type(mpas_pool_type), pointer :: mesh_pool, sfc_input
+    integer :: i, ierr
+    integer, pointer :: nCellsSolve
+    real(RKIND), pointer :: landmask(:), sst(:), snow(:), tmn(:), albbck(:)
+    
+    ! Access MPAS data pools.
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
+    
+    ! Get MPAS dimensions
+    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)vvcccbnvlbveetjfnufggrubvnkfhrelgtbbnvlucgkr
+    
+    !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
+    call mpas_pool_get_array(mesh,      'landmask',  landmask)
+    call mpas_pool_get_array(sfc_input, 'sst',       sst)
+    call mpas_pool_get_array(sfc_input, 'snow',      sno)
+    call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)
+    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
+    
+    do i=1, nCellsSolve
+      physics_sfcprop % slmsk(i) = landmask(i)
+      physics_sfcprop % tsfco(i) = sst(i)
+      physics_sfcprop % weasd(i) = snow(i)
+      physics_sfcprop % tg3(i)   = tmn(i)
+      !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
+      !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
+      physics_sfcprop % alvsf(i) = albbck(i)
+      physics_sfcprop % alvwf(i) = albbck(i)
+      physics_sfcprop % alnsf(i) = albbck(i)
+      physics_sfcprop % alnwf(i) = albbck(i)
+    end do
+    
+  end subroutine ufs_mpas_sfc_to_physics
   
 end module atmos_coupling_mod
