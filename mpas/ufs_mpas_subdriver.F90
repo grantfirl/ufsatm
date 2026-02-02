@@ -42,6 +42,8 @@ module ufs_mpas_subdriver
   public :: ufs_mpas_open_init
   public :: ufs_mpas_open_lbc
 
+  logical :: init_lbc    = .true.
+  integer :: nRecord_lbc = 1
   !> #########################################################################################
   !>
   !> #########################################################################################
@@ -282,6 +284,7 @@ contains
        call mpas_pool_add_dimension(lbc, 'num_scalars', num_scalars)
        call mpas_pool_add_dimension(lbc, 'moist_start', 1)
        call mpas_pool_add_dimension(lbc, 'moist_end', Cfg % nwat)
+       call mpas_pool_add_dimension(lbc, 'index_qv', 1)
        nullify (lbc)
        call ufs_mpas_define_lbc_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
        if (ierr /= 0) then
@@ -292,7 +295,7 @@ contains
     !
     ! Read in static (invariant) data
     !
-    call dyn_mpas_read_write_stream(domain_ptr % clock,  'r', 'invariant',     pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    call dyn_mpas_read_write_stream(domain_ptr % clock,  'r', 'invariant',     pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW, nRecord=1)
     if (ierr /= MPAS_STREAM_MGR_NOERR) then
        call mpas_log_write('Could not read from ''invariant'' stream ',messageType=MPAS_LOG_ERR)
        call mpp_error(FATAL,'ERROR: Could not read from ''invariant'' stream ')
@@ -431,12 +434,12 @@ contains
     ! Read in initial-conditions
     !
     call mpas_log_write('Reading in MPAS initial condition stream.')
-    call dyn_mpas_read_write_stream(clock, 'r', 'input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    call dyn_mpas_read_write_stream(clock, 'r', 'input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW, nRecord=1)
     if (ierr /= MPAS_STREAM_MGR_NOERR) then
        call mpas_log_write('Could not read from ''input'' stream ',messageType=MPAS_LOG_ERR)
        call mpp_error(FATAL,'ERROR: Could not read from ''input'' stream ')
     end if
-    call dyn_mpas_read_write_stream(clock, 'r', 'sfc_input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW)
+    call dyn_mpas_read_write_stream(clock, 'r', 'sfc_input', pio_file_desc=pioid_ic, ierr=ierr, timeLevel=1, whence=mpas_NOW, nRecord=1)
     if (ierr /= MPAS_STREAM_MGR_NOERR) then
        call mpas_log_write('Could not read from ''sfc_input'' stream ',messageType=MPAS_LOG_ERR)
        call mpp_error(FATAL,'ERROR: Could not read from ''input'' stream ')
@@ -546,14 +549,15 @@ contains
     use mpas_timer,           only : mpas_timer_start, mpas_timer_stop
     use mpas_timekeeping,     only : mpas_advance_clock, mpas_get_clock_time, mpas_get_time
     use mpas_timekeeping,     only : mpas_NOW, mpas_is_clock_stop_time, mpas_dmpar_get_time
-    use mpas_timekeeping,     only : mpas_set_timeInterval, operator(+), operator(.LT.), operator(.GT.)
+    use mpas_timekeeping,     only : mpas_set_timeInterval, operator(+), operator(.LT.), operator(.GT.), operator(.LE.)
     use ufs_mpas_module,      only : ufs_mpas_atm_update_bdy_tend
+    use mpas_atm_boundaries,  only : LBC_intv_end
     ! FMS
     use mpp_mod,              only : FATAL, mpp_error
     ! Locals
     character(len=*), parameter :: subname = 'ufs_mpas_run::ufs_mpas_run'
     real (kind=RKIND), pointer :: config_dt
-    type (mpas_pool_type), pointer :: state, diag, mesh
+    type (mpas_pool_type), pointer :: state, diag, mesh, lbc
     type (mpas_Time_type) :: timeNow, timeStop,timeLBCnew
     character(len=StrKIND) :: timeStamp
     integer :: ierr, itime, itimestep
@@ -564,10 +568,12 @@ contains
     real(RKIND), dimension(:),   pointer :: lon,lat
     real(RKIND), allocatable :: lon_p(:), lat_p(:)
     integer, pointer :: nCellsSolve
+    real (kind=RKIND), dimension(:,:), pointer :: theta, theta_tend
+
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag)
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)
-
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)    
+ 
     !
     ! DJS2025 BEGIN Diagnostic block
     !
@@ -611,24 +617,30 @@ contains
        call mpp_error(FATAL,subname//'Failed to set dynamics time step')
     endif
 
+    ! DO we need to update LBCs?
+    if (LBC_intv_end .LE. timeNow) then
+       call mpas_get_time(curr_time=timeNow, dateTimeString=timeStamp, ierr=ierr)
+       call mpas_log_write(' Time to update LBCs from '//trim(timeStamp))
+       call mpas_get_time(curr_time=LBC_intv_end, dateTimeString=timeStamp, ierr=ierr)
+       call mpas_log_write(' Time to update LBCs to   '//trim(timeStamp))
+    endif
+
     !
     ! Read initial boundary state
     !
-    if (config_apply_lbcs) then
+    if (config_apply_lbcs .and. init_lbc) then
        call mpas_log_write('--------------------------------------------------')
        call mpas_log_write('Compute initial lateral boundary conditions for timestep '//trim(timeStamp))
-       call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .true., ierr)
+       call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .true., nRecord_lbc, ierr)
        if (ierr /= 0) then
           call mpas_log_write('Failed to process LBC data at next time after '//trim(timeStamp), messageType=MPAS_LOG_ERR)
           return
        end if
+       init_lbc = .false.
     end if
 
-    ! Need to compute this somewhere.
-    !timeLBCnew
-    
     ! During integration, time level 1 stores the model state at the beginning of the
-    !   time step, and time level 2 stores the state advanced config_dt in time by timestep(...)
+    !   time step, and time level 2 stores the state advanced config_dt in time by timestep
     timeStop = timeNow + mpas_time_interval
     itimestep =	0
     call mpas_log_write('--------------------------------------------------')
@@ -640,25 +652,29 @@ contains
        if ( ierr /= 0 ) then
           call mpp_error(FATAL,subname//': Failed to get time mpas_NOW"')
        end if
-       !
        call mpas_log_write(' Start timestep at '//trim(timeStamp))
+
        !
        ! Read future boundary state and compute boundary tendencies
        !
-       ! DJS: Currently we are not updating the LBCs as we integrate. Bad.Bad.
-       ! Need to extend ufs_mpas_atm_update_bdy_tend() accordingly.
        if (config_apply_lbcs) then
-          !if (timeNow .GT. timeLBCnew) then
-          call mpas_log_write('--------------------------------------------------')
-          call mpas_log_write('Update lateral boundary conditions for timestep '//trim(timeStamp))
-          !call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .false., ierr)
-          if (ierr /= 0) then
-             call mpas_log_write('Failed to process LBC data at next time after '//trim(timeStamp), messageType=MPAS_LOG_ERR)
-             return
+          if (LBC_intv_end .LE. timeNow) then
+             nRecord_lbc = nRecord_lbc + 1
+             call mpas_log_write('--------------------------------------------------')
+             call mpas_log_write('Update lateral boundary conditions for timestep '//trim(timeStamp))
+             call ufs_mpas_atm_update_bdy_tend(clock, domain_ptr % blocklist, .false., nRecord_lbc, ierr)
+             if (ierr /= 0) then
+                call mpas_log_write('Failed to process LBC data at next time after '//trim(timeStamp), messageType=MPAS_LOG_ERR)
+                return
+             end if
           end if
-          !end if
        end if
-       
+
+       call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'lbc',   lbc)
+       call mpas_pool_get_array(lbc, 'lbc_theta', theta, 1)
+       call mpas_pool_get_array(lbc, 'lbc_theta', theta_tend, 2)
+       print*,'IMP_DEBUG theta = ',theta(1,2),theta_tend(1,2)
+
        ! Integrate forward one dycore time step
        call mpas_timer_start('time integration')
        call mpas_dmpar_get_time(integ_start_time)
