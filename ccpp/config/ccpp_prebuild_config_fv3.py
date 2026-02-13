@@ -179,6 +179,7 @@ SCHEME_FILES = [
     'physics/physics/MP/Thompson/mp_thompson_post.F90',
     'physics/physics/MP/TEMPO/mp_tempo_pre.F90',
     'physics/physics/MP/TEMPO/mp_tempo.F90',
+    'physics/physics/MP/TEMPO/mp_tempo_condensation.F90',
     'physics/physics/MP/TEMPO/mp_tempo_post.F90',
     'physics/physics/MP/Zhao_Carr/zhaocarr_gscond.f',
     'physics/physics/MP/Zhao_Carr/zhaocarr_precpd.f',

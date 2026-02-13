@@ -1209,7 +1209,7 @@ contains
 
       if (Model%ltaerosol) then
         Interstitial%nvdiff = Interstitial%nvdiff + 3
-      else if (Model%mraerosol) then
+      else if (Model%mraerosol .and. Model%imp_physics /= Model%imp_physics_tempo) then
         Interstitial%nvdiff = Interstitial%nvdiff + 1
       endif
       if (Model%imp_physics == Model%imp_physics_tempo .and. Model%lthailaware) then
@@ -1304,7 +1304,7 @@ contains
         Interstitial%nvdiff = 9
         if (Model%ltaerosol) then
            Interstitial%nvdiff = Interstitial%nvdiff + 3
-        else if (Model%mraerosol) then
+        else if (Model%mraerosol .and. Model%imp_physics /= Model%imp_physics_tempo) then
            Interstitial%nvdiff = Interstitial%nvdiff + 1
         endif
         if (Model%imp_physics == Model%imp_physics_tempo .and. Model%lthailaware) then
