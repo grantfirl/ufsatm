@@ -68,7 +68,6 @@
       <scheme>cu_gf_driver_pre</scheme>
       <scheme>cu_gf_driver</scheme>
       <scheme>GFS_DCNV_generic_post</scheme>
-      <scheme>GFS_SCNV_generic_post</scheme>
       <scheme>GFS_suite_interstitial_4</scheme>
       <scheme>cnvc90</scheme>
       <scheme>mp_thompson</scheme>

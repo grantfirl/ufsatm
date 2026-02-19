@@ -69,7 +69,6 @@
       <scheme>cu_c3_driver_pre</scheme>
       <scheme>cu_c3_driver</scheme>
       <scheme>GFS_DCNV_generic_post</scheme>
-      <scheme>GFS_SCNV_generic_post</scheme>
       <scheme>GFS_suite_interstitial_4</scheme>
       <scheme>cnvc90</scheme>
       </subcycle>
