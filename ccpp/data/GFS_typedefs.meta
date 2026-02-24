@@ -3420,6 +3420,46 @@
   type = real
   kind = kind_phys
   active = (flag_for_rrtmgp_radiation_scheme)
+[tsfco_dat]
+  standard_name = sea_surface_temperature_from_data
+  long_name = sfc temperature
+  units = K
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[mask_dat]
+  standard_name = land_sea_mask_from_data 
+  long_name = landmask
+  units = flag
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[tice_dat]
+  standard_name = surface_skin_temperature_over_ice_from_data
+  long_name = surface skin temperature over ice
+  units = K
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[hice_dat]
+  standard_name = sea_ice_thickness_from_data
+  long_name = sea-ice thickness
+  units = m
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[fice_dat]
+  standard_name = sea_ice_area_fraction_of_sea_area_fraction_from_data
+  long_name = sea-ice concentration [0,1]
+  units = frac
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
 
 ########################################################################
 [ccpp-table-properties]
@@ -3820,6 +3860,12 @@
 [use_med_flux]
   standard_name = do_mediator_atmosphere_ocean_fluxes
   long_name = flag for using atmosphere-ocean fluxes form mediator (default false)
+  units = flag
+  dimensions = ()
+  type = logical
+[use_cdeps_inline]
+  standard_name = do_cdeps_inline
+  long_name = flag for using data provided by CDEPS inline (default false)
   units = flag
   dimensions = ()
   type = logical
@@ -5141,6 +5187,20 @@
   dimensions = ()
   type = real
   kind = kind_phys
+[fs_fac_rain]
+  standard_name = multiplicative_tuning_parameter_for_rain_fall_speed
+  long_name = multiplicative tuning parameter for rain fall speed
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[fs_fac_snow]
+  standard_name = multiplicative_tuning_parameter_for_snow_fall_speed
+  long_name = multiplicative tuning parameter_for snow fall speed
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
 [gfs_phys_time_vary_is_init]
   standard_name = flag_for_gfs_phys_time_vary_interstitial_initialization
   long_name = flag carrying interstitial initialization status
@@ -6153,6 +6213,13 @@
   dimensions = ()
   type = real
   kind = kind_phys
+[cat_adj_deep]
+  standard_name = adjustment_for_convective_advection_time_for_deep
+  long_name = adjustment for convective advection time for deep
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
 [clam_shal]
   standard_name = entrainment_rate_coefficient_for_shallow_convection
   long_name = entrainment rate coefficient for shallow convection
@@ -6184,6 +6251,13 @@
 [asolfac_shal]
   standard_name = aerosol_aware_multiplicative_rain_conversion_parameter_for_shallow_convection
   long_name = aerosol-aware parameter inversely proportional to CCN number concentraion from Lim (2011) for shallow convection
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[cat_adj_shal]
+  standard_name = adjustment_for_convective_advection_time_for_shallow
+  long_name = adjustment for convective advection time for shallow
   units = none
   dimensions = ()
   type = real
