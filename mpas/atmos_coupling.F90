@@ -4,8 +4,8 @@
 !>
 ! ###########################################################################################
 module atmos_coupling_mod
-  use mpas_kind_types,    only : mpas_kind => RKIND
-  use ufs_mpas_module,    only : domain_ptr
+  use mpas_kind_types, only : mpas_kind => RKIND
+  use ufs_mpas_io,     only : domain_ptr
   
   implicit none
   public :: MPAS_statein_type

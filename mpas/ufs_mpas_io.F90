@@ -1,18 +1,27 @@
 !> ###########################################################################################
-!> \file ufs_mpas_module.F90
+!> \file ufs_mpas_io.F90
 !>
 !> Routines from the subdrivers for MPAS-A and CAM-SIMA have been adopted/modified here for
-!> use within the UFS Weather Model.
+!> use within the UFS Weather Model for input/output.
+!> 
 !> MPAS-A Subdriver:    MPAS-Model/src/driver/mpas_subdriver.F
+!> CAM-CESM (external): src/dynamics/mpas/driver/cam_mpas_subdriver.F90
+!>                      (https://github.com/ESCOMP/CAM/blob/cam_development/)
 !> CAM-SIMA (external): src/dynamics/mpas/driver/dyn_mpas_subdriver.F90
 !>                      (https://github.com/ESCOMP/CAM-SIMA/blob/development/)
 !>
+!>
 !> ###########################################################################################
-module ufs_mpas_module
+module ufs_mpas_io
   use mpas_derived_types,  only : core_type, domain_type, mpas_Clock_type
   use mpas_derived_types,  only : MPAS_Time_Type
   use mpas_kind_types,     only : StrKIND
-  use mpas_atm_boundaries, only : LBC_intv_end
+  use module_mpas_config,  only : pio_iotype, pio_stride, pio_numiotasks, pio_iodesc
+  use module_mpas_config,  only : lbc_filename, pioid_lbc, pio_subsystem_lbc
+  use module_mpas_config,  only : ic_filename,  pioid_ic,  pio_subsystem_ic
+  use module_mpas_config,  only :               pioid_output, pio_subsystem_output
+  use module_mpas_config,  only : TIMELEVEL_NOW
+  use ufs_mpas_tools,      only : stringify
   implicit none
 
   public
@@ -22,12 +31,6 @@ module ufs_mpas_module
   type(domain_type),     pointer :: domain_ptr => null()
   type(mpas_Clock_type), pointer :: clock      => null()
 
-  !
-  character(StrKIND), allocatable :: constituent_name(:)
-  integer, allocatable :: index_constituent_to_mpas_scalar(:)
-  integer, allocatable :: index_mpas_scalar_to_constituent(:)
-  logical, allocatable :: is_water_species(:)
-  
   !> #########################################################################################
   !>
   !> #########################################################################################
@@ -123,7 +126,7 @@ module ufs_mpas_module
        var_info_type('zgrid'                           , 'real'      , 2), &
        var_info_type('zxu'                             , 'real'      , 2), &
        var_info_type('zz'                              , 'real'      , 2)  &
-    ]
+       ]
 
   !> #########################################################################################
   !> This list corresponds to the "input" stream in MPAS registry.
@@ -249,409 +252,142 @@ module ufs_mpas_module
   type(var_info_type), parameter :: output_var_info_list(*) = [ &
        var_info_type('Time'                            , 'real'      , 0), &
        var_info_type('initial_time'                    , 'character' , 0), &
-       var_info_type('divergence'                      , 'real'      , 2), &
-       var_info_type('pressure'                        , 'real'      , 2), &
-       var_info_type('relhum'                          , 'real'      , 2), &
-       var_info_type('rho'                             , 'real'      , 2), &
+       !var_info_type('divergence'                      , 'real'      , 2), &
+       !var_info_type('pressure'                        , 'real'      , 2), &
+       !var_info_type('relhum'                          , 'real'      , 2), &
+       !var_info_type('rho'                             , 'real'      , 2), &
        var_info_type('scalars'                         , 'real'      , 3), &
-       var_info_type('surface_pressure'                , 'real'      , 1), &
+       !var_info_type('surface_pressure'                , 'real'      , 1), &
        var_info_type('theta'                           , 'real'      , 2), &
-       var_info_type('u'                               , 'real'      , 2), &
+       !var_info_type('u'                               , 'real'      , 2), &
+       var_info_type('uReconstructMeridional'          , 'real'      , 2), &
+       var_info_type('uReconstructZonal'               , 'real'      , 2), &
        var_info_type('vorticity'                       , 'real'      , 2), &
-       var_info_type('w'                               , 'real'      , 2), &
-       var_info_type('zz'                              , 'real'      , 2), &
-       var_info_type('lbc_u'                           , 'real'      , 2), &
-       var_info_type('lbc_w'                           , 'real'      , 2), &
-       var_info_type('lbc_rho'                         , 'real'      , 2), &
-       var_info_type('lbc_theta'                       , 'real'      , 2)  &
+       var_info_type('w'                               , 'real'      , 2) &
+       !var_info_type('zz'                              , 'real'      , 2)  &
     ]
   
 contains
+
   !> #########################################################################################
-  !> Convert one or more values of any intrinsic data types to a character string for pretty
-  !> printing.
-  !> If `value` contains more than one element, the elements will be stringified, delimited by `separator`, then concatenated.
-  !> If `value` contains exactly one element, the element will be stringified without using `separator`.
-  !> If `value` contains zero element or is of unsupported data types, an empty character string is produced.
-  !> If `separator` is not supplied, it defaults to ", " (i.e., a comma and a space).
-  !> (KCW, 2024-02-04)
+  !> Procedure to open MPAS IC file.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_open_init()
+    ! PIO
+    use pio,         only : pio_openfile, pio_nowrite
+    ! FMS
+    use fms2_io_mod, only : file_exists
+    use mpp_mod,     only : FATAL, mpp_error
+    ! Arguments
+    ! Locals
+    integer :: ierr
+    character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_open_init'
+
+    ! Open MPAS Initial Condition file.
+    if (file_exists(ic_filename)) then
+       ierr = pio_openfile(pio_subsystem_ic, pioid_ic, pio_iotype, ic_filename, pio_nowrite)
+       if (ierr /= 0) then
+          call mpp_error(FATAL,subname//": Failed opening MPAS IC File, "//trim(ic_filename))
+       end if
+    else
+       call mpp_error(FATAL,subname//": Cannot find MPAS IC file: "//trim(ic_filename))
+    end if
+  end subroutine ufs_mpas_open_init
+
+  !> #########################################################################################
+  !> Procedure to open MPAS Lateral Boundary Condition file.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_open_lbc()
+    ! PIO
+    use pio,         only : pio_openfile, pio_nowrite
+    ! FMS
+    use fms2_io_mod, only : file_exists
+    use mpp_mod,     only : FATAL, mpp_error
+    ! Arguments
+    ! Locals
+    integer :: ierr
+    character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_open_lbc'
+
+    ! Open MPAS Initial Condition file.
+    if (file_exists(lbc_filename)) then
+       ierr = pio_openfile(pio_subsystem_lbc, pioid_lbc, pio_iotype, lbc_filename, pio_nowrite)
+       if (ierr /= 0) then
+          call mpp_error(FATAL,subname//": Failed opening MPAS LBC File, "//trim(lbc_filename))
+       end if
+    else
+       call mpp_error(FATAL,subname//": Cannot find MPAS LBC file: "//trim(lbc_filename))
+    end if
+  end subroutine ufs_mpas_open_lbc
+
+  !> #########################################################################################
+  !> Procedure to create and write to MPAS stream
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_write(stream_name, timestamp)
+    ! PIO
+    use pio, only : pio_openfile, pio_createfile, PIO_WRITE, PIO_CLOBBER
+    use mpas_log, only : mpas_log_write
+    use mpas_timekeeping, only : MPAS_NOW, MPAS_STREAM_EARLIEST_STRICTLY_AFTER
+    use mpp_mod, only : mpp_error, FATAL
+    ! Arguments
+    character(len=*), intent(in) :: stream_name
+    character(len=*), intent(in) :: timestamp
+    ! Locals
+    character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_write'
+    character(len=:), allocatable :: filename
+    integer :: ierr
+    type(var_info_type), allocatable :: output_var_info_list(:)
+    integer :: timelevel, whence
+    logical, parameter :: debug = .true.
+
+    if (trim(stream_name) == "output") then
+       filename = 'history.'//trim(timestamp)//'.nc'
+    else if (trim(stream_name) == "restart") then
+       filename = 'restart.'//trim(timestamp)//'.nc'
+    else if (trim(stream_name) == "input") then
+       filename = 'input.'//trim(timestamp)//'.nc'
+    else
+       stop "Invalid stream_name to ufs_mpas_write: stream_name =" &
+            //trim(stream_name)
+    end if
+
+    if (debug) call mpas_log_write("entering ufs_mpas_write")
+    if (debug) call mpas_log_write("creating "//trim(stream_name)//" stream file: "//trim(filename))
+    ierr = pio_createfile(pio_subsystem_output, pioid_output, pio_iotype, trim(filename))
+    if ( ierr /= 0 ) call mpp_error(FATAL, subname//": pio_createfile failed ")
+
+    output_var_info_list = parse_stream_name_fragment('output')
+    timelevel = TIMELEVEL_NOW
+    whence = MPAS_NOW
+
+    call dyn_mpas_read_write_stream(clock, "write", stream_name, pioid_output, &
+         timeLevel=timelevel, whence=whence, &
+         nRecord=1, ierr=ierr)
+    if ( ierr /= 0 ) call mpp_error(FATAL, &
+         subname//": dyn_mpas_read_write_stream failed ")
+
+    if (debug) call mpas_log_write("exiting ufs_mpas_write")
+  end subroutine ufs_mpas_write
+
+  !> ########################################################################################
+  !>
+  !> \brief  Computes local unit north, east, and edge-normal vectors
+  !> \author Michael Duda
+  !> \date   15 January 2020
+  !> \details
+  !>  This routine computes the local unit north and east vectors at all cell
+  !>  centers, storing the resulting fields in the mesh pool as 'north' and
+  !>  'east'. It also computes the edge-normal unit vectors by calling
+  !>  the mpas_initialize_vectors routine. Before this routine is called,
+  !>  the mesh pool must contain 'latCell' and 'lonCell' fields that are valid
+  !>  for all cells (not just solve cells), plus any fields that are required
+  !>  by the mpas_initialize_vectors routine.
   !>
   !> \update: Dustin Swales April 2025 - Modified for use in UWM
   !>
-  !> #########################################################################################
-  pure function stringify(value, separator)
-    use, intrinsic :: iso_fortran_env, only: int32, int64, real32, real64
-
-    class(*), intent(in) :: value(:)
-    character(*), optional, intent(in) :: separator
-    character(:), allocatable :: stringify
-
-    integer, parameter :: sizelimit = 1024
-
-    character(:), allocatable :: buffer, delimiter, format
-    character(:), allocatable :: value_c(:)
-    integer :: i, n, offset
-
-    if (present(separator)) then
-       delimiter = separator
-    else
-       delimiter = ', '
-    end if
-
-    n = min(size(value), sizelimit)
-
-    if (n == 0) then
-       stringify = ''
-
-       return
-    end if
-
-    select type (value)
-    type is (character(*))
-       allocate(character(len(value) * n + len(delimiter) * (n - 1)) :: buffer)
-
-       buffer(:) = ''
-       offset = 0
-
-       ! Workaround for a bug in GNU Fortran >= 12. This is perhaps the manifestation of GCC Bugzilla Bug 100819.
-       ! When a character string array is passed as the actual argument to an unlimited polymorphic dummy argument,
-       ! its array index and length parameter are mishandled.
-       allocate(character(len(value)) :: value_c(size(value)))
-
-       value_c(:) = value(:)
-
-       do i = 1, n
-          if (len(delimiter) > 0 .and. i > 1) then
-             buffer(offset + 1:offset + len(delimiter)) = delimiter
-             offset = offset + len(delimiter)
-          end if
-
-          if (len_trim(adjustl(value_c(i))) > 0) then
-             buffer(offset + 1:offset + len_trim(adjustl(value_c(i)))) = trim(adjustl(value_c(i)))
-             offset = offset + len_trim(adjustl(value_c(i)))
-          end if
-       end do
-
-       deallocate(value_c)
-    type is (integer(int32))
-       allocate(character(11 * n + len(delimiter) * (n - 1)) :: buffer)
-       allocate(character(17 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-
-       write(format, '(a, i0, 3a)') '(ss, ', n, '(i0, :, "', delimiter, '"))'
-       write(buffer, format) value
-    type is (integer(int64))
-       allocate(character(20 * n + len(delimiter) * (n - 1)) :: buffer)
-       allocate(character(17 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-
-       write(format, '(a, i0, 3a)') '(ss, ', n, '(i0, :, "', delimiter, '"))'
-       write(buffer, format) value
-    type is (logical)
-       allocate(character(1 * n + len(delimiter) * (n - 1)) :: buffer)
-       allocate(character(13 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-
-       write(format, '(a, i0, 3a)') '(', n, '(l1, :, "', delimiter, '"))'
-       write(buffer, format) value
-    type is (real(real32))
-       allocate(character(13 * n + len(delimiter) * (n - 1)) :: buffer)
-
-       if (maxval(abs(value)) < 1.0e5_real32) then
-          allocate(character(20 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-          write(format, '(a, i0, 3a)') '(ss, ', n, '(f13.6, :, "', delimiter, '"))'
-       else
-          allocate(character(23 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-          write(format, '(a, i0, 3a)') '(ss, ', n, '(es13.6e2, :, "', delimiter, '"))'
-       end if
-
-       write(buffer, format) value
-    type is (real(real64))
-       allocate(character(13 * n + len(delimiter) * (n - 1)) :: buffer)
-
-       if (maxval(abs(value)) < 1.0e5_real64) then
-          allocate(character(20 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-          write(format, '(a, i0, 3a)') '(ss, ', n, '(f13.6, :, "', delimiter, '"))'
-       else
-          allocate(character(23 + len(delimiter) + floor(log10(real(n))) + 1) :: format)
-          write(format, '(a, i0, 3a)') '(ss, ', n, '(es13.6e2, :, "', delimiter, '"))'
-       end if
-
-       write(buffer, format) value
-    class default
-       stringify = ''
-
-       return
-    end select
-
-    stringify = trim(buffer)
-  end function stringify
-
-  !> #########################################################################################
-  !>
-  !>  routine ufs_mpas_atm_update_bdy_tend
-  !>
-  !> \brief   Reads new boundary data and updates the LBC tendencies
-  !> \author  Michael Duda
-  !> \date    27 September 2016
-  !> \details 
-  !>  This routine reads from the 'lbc_in' stream all variables in the 'lbc'
-  !>  pool. When called with firstCall=.true., the latest time before the
-  !>  present is read into time level 2 of the lbc pool; otherwise, the
-  !>  contents of time level 2 are shifted to time level 1, the earliest
-  !>  time strictly later than the present is read into time level 2, and
-  !>  the tendencies for all fields in the lbc pool are computed and stored
-  !>  in time level 1.
-  !>
-  !> \update: Dustin Swales September 2025 - Modified for use in UWM
-  !>
-  !> #########################################################################################
-  subroutine ufs_mpas_atm_update_bdy_tend(clock, block, firstCall, nRecord, ierr)
-    use mpas_constants,      only : rvord
-    use mpas_stream_manager, only : mpas_stream_mgr_read
-    use mpas_log,            only : mpas_log_write
-    use mpas_derived_types,  only : MPAS_STREAM_MGR_NOERR, MPAS_LOG_ERR
-    use mpas_derived_types,  only : mpas_pool_type, mpas_Clock_type, block_type
-    use mpas_derived_types,  only : MPAS_TimeInterval_type
-    use mpas_timekeeping,    only : mpas_set_time
-    use mpas_kind_types,     only : StrKIND, RKIND
-    use mpas_derived_types,  only : MPAS_STREAM_LATEST_BEFORE
-    use mpas_derived_types,  only : MPAS_STREAM_EARLIEST_STRICTLY_AFTER
-    use mpas_timekeeping,    only : mpas_get_timeInterval, mpas_get_time, operator(-)
-    use mpas_timekeeping,    only : mpas_get_clock_time, MPAS_NOW
-    use mpas_pool_routines,  only : mpas_pool_get_config, mpas_pool_get_subpool
-    use mpas_pool_routines,  only : mpas_pool_shift_time_levels, mpas_pool_get_array
-    use mpas_pool_routines,  only : mpas_pool_get_dimension
-    use module_mpas_config,  only : lbc_filename, pioid_lbc, pio_subsystem_lbc
-    
-    implicit none
-
-    type (mpas_clock_type), intent(in) :: clock
-    type (block_type), intent(inout) :: block
-    logical, intent(in) :: firstCall
-    integer, intent(in) :: nRecord
-    integer, intent(out) :: ierr
-
-    character(len=StrKIND) :: lbc_intv_start_string
-    character(len=StrKIND) :: lbc_intv_end_string
-
-    type (mpas_pool_type), pointer :: mesh
-    type (mpas_pool_type), pointer :: state
-    type (mpas_pool_type), pointer :: lbc
-    real (kind=RKIND) :: dt
-
-    integer, pointer :: nCells_ptr
-    integer, pointer :: nEdges_ptr
-    integer, pointer :: nVertLevels_ptr
-    integer, pointer :: index_qv_ptr
-    integer, pointer :: nScalars_ptr
-    integer :: nCells, nEdges, nVertLevels, index_qv, nScalars
-
-    real (kind=RKIND), dimension(:,:), pointer :: u
-    real (kind=RKIND), dimension(:,:), pointer :: ru
-    real (kind=RKIND), dimension(:,:), pointer :: rho_edge
-    real (kind=RKIND), dimension(:,:), pointer :: w
-    real (kind=RKIND), dimension(:,:), pointer :: theta
-    real (kind=RKIND), dimension(:,:), pointer :: rtheta_m
-    real (kind=RKIND), dimension(:,:), pointer :: rho_zz
-    real (kind=RKIND), dimension(:,:), pointer :: rho
-    real (kind=RKIND), dimension(:,:,:), pointer :: scalars
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_u
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_ru
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_rho_edge
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_w
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_theta
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_rtheta_m
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_rho_zz
-    real (kind=RKIND), dimension(:,:), pointer :: lbc_tend_rho
-    real (kind=RKIND), dimension(:,:,:), pointer :: lbc_tend_scalars
-
-    integer, dimension(:,:), pointer :: cellsOnEdge
-    real (kind=RKIND), dimension(:,:), pointer :: zz
-
-    integer :: dd_intv, s_intv, sn_intv, sd_intv
-    type (MPAS_Time_Type) :: currTime
-    type (MPAS_TimeInterval_Type) :: lbc_interval
-    character(len=StrKIND) :: read_time
-    integer :: iEdge, iCell, k, j
-    integer :: cell1, cell2
-
-
-    ierr = 0
-
-    call mpas_pool_get_subpool(block % structs, 'mesh', mesh)
-    call mpas_pool_get_subpool(block % structs, 'state', state)
-    call mpas_pool_get_subpool(block % structs, 'lbc', lbc)
-
-    if (firstCall) then
-       call dyn_mpas_read_write_stream(clock, 'r', 'lbc_in', pio_file_desc=pioid_lbc, ierr=ierr, timeLevel=2, &
-            whence = MPAS_STREAM_LATEST_BEFORE, actualWhen=read_time, nRecord=nRecord)
-       if (ierr /= MPAS_STREAM_MGR_NOERR) then
-          call mpas_log_write('Could not read from ''lbc_in'' stream on or before the current date '// &
-                              'to update lateral boundary tendencies', messageType=MPAS_LOG_ERR)
-          ierr = 1
-       end if
-    else
-       call mpas_pool_shift_time_levels(lbc)
-       call dyn_mpas_read_write_stream(clock, 'r', 'lbc_in', pio_file_desc=pioid_lbc, ierr=ierr, timeLevel=2,  &
-            whence = MPAS_STREAM_EARLIEST_STRICTLY_AFTER, actualWhen=read_time, nRecord=nRecord)
-       if (ierr /= MPAS_STREAM_MGR_NOERR) then
-          call mpas_log_write('Could not read from ''lbc_in'' stream after the current date '// &
-                              'to update lateral boundary tendencies', messageType=MPAS_LOG_ERR)
-          ierr = 1
-       end if
-    end if
-    if (ierr /= 0) then
-       return
-    end if
-
-    call mpas_set_time(currTime, dateTimeString=trim(read_time))
-    
-    !
-    ! Compute any derived fields from those that were read from the lbc_in stream
-    !
-    call mpas_pool_get_array(lbc, 'lbc_u', u, 2)
-    call mpas_pool_get_array(lbc, 'lbc_ru', ru, 2)
-    call mpas_pool_get_array(lbc, 'lbc_rho_edge', rho_edge, 2)
-    call mpas_pool_get_array(lbc, 'lbc_w', w, 2)
-    call mpas_pool_get_array(lbc, 'lbc_theta', theta, 2)
-    call mpas_pool_get_array(lbc, 'lbc_rtheta_m', rtheta_m, 2)
-    call mpas_pool_get_array(lbc, 'lbc_rho_zz', rho_zz, 2)
-    call mpas_pool_get_array(lbc, 'lbc_rho', rho, 2)
-    call mpas_pool_get_array(lbc, 'lbc_scalars', scalars, 2)
-
-    call mpas_pool_get_array(mesh, 'cellsOnEdge', cellsOnEdge)
-    call mpas_pool_get_dimension(mesh, 'nCells', nCells_ptr)
-    call mpas_pool_get_dimension(mesh, 'nEdges', nEdges_ptr)
-    call mpas_pool_get_dimension(mesh, 'nVertLevels', nVertLevels_ptr)
-    call mpas_pool_get_dimension(state, 'num_scalars', nScalars_ptr)
-    call mpas_pool_get_dimension(lbc, 'index_qv', index_qv_ptr)
-    call mpas_pool_get_array(mesh, 'zz', zz)
-
-    if (.not. firstCall) then
-       call mpas_pool_get_array(lbc, 'lbc_u', lbc_tend_u, 1)
-       call mpas_pool_get_array(lbc, 'lbc_ru', lbc_tend_ru, 1)
-       call mpas_pool_get_array(lbc, 'lbc_rho_edge', lbc_tend_rho_edge, 1)
-       call mpas_pool_get_array(lbc, 'lbc_w', lbc_tend_w, 1)
-       call mpas_pool_get_array(lbc, 'lbc_theta', lbc_tend_theta, 1)
-       call mpas_pool_get_array(lbc, 'lbc_rtheta_m', lbc_tend_rtheta_m, 1)
-       call mpas_pool_get_array(lbc, 'lbc_rho_zz', lbc_tend_rho_zz, 1)
-       call mpas_pool_get_array(lbc, 'lbc_rho', lbc_tend_rho, 1)
-       call mpas_pool_get_array(lbc, 'lbc_scalars', lbc_tend_scalars, 1)
-    endif
-
-    ! Dereference the pointers to avoid non-array pointer for OpenACC
-    nCells = nCells_ptr
-    nEdges = nEdges_ptr
-    nVertLevels = nVertLevels_ptr
-    nScalars = nScalars_ptr
-    index_qv = index_qv_ptr
-
-    ! Compute lbc_rho_zz
-    do k=1,nVertLevels
-       zz(k,nCells+1) = 1.0_RKIND          ! Avoid potential division by zero in the following line
-    end do
-
-    do iCell=1,nCells+1
-       do k=1,nVertLevels
-          rho_zz(k,iCell) = rho(k,iCell) / zz(k,iCell)
-       end do
-    end do
-
-    ! Average lbc_rho_zz to edges
-    do iEdge=1,nEdges
-       cell1 = cellsOnEdge(1,iEdge)
-       cell2 = cellsOnEdge(2,iEdge)
-       if (cell1 > 0 .and. cell2 > 0) then
-          do k = 1, nVertLevels
-             rho_edge(k,iEdge) = 0.5_RKIND * (rho_zz(k,cell1) + rho_zz(k,cell2))
-          end do
-       end if
-    end do
-
-    do iEdge=1,nEdges+1
-       do k=1,nVertLevels
-          ru(k,iEdge) = u(k,iEdge) * rho_edge(k,iEdge)
-       end do
-    end do
-    
-    do iCell=1,nCells+1
-       do k=1,nVertLevels
-          rtheta_m(k,iCell) = theta(k,iCell) * rho_zz(k,iCell) * (1.0_RKIND + rvord * scalars(index_qv,k,iCell))
-       end do
-    end do
-
-    if (.not. firstCall) then
-
-       lbc_interval = currTime - LBC_intv_end
-       call mpas_get_timeInterval(interval=lbc_interval, DD=dd_intv, S=s_intv, S_n=sn_intv, S_d=sd_intv, ierr=ierr)
-       dt = 86400.0_RKIND * real(dd_intv, kind=RKIND) + real(s_intv, kind=RKIND) &
-            + (real(sn_intv, kind=RKIND) / real(sd_intv, kind=RKIND))
-
-       dt = 1.0_RKIND / dt
-
-       do iEdge=1,nEdges+1
-          do k=1,nVertLevels
-             lbc_tend_u(k,iEdge) = (u(k,iEdge) - lbc_tend_u(k,iEdge)) * dt
-             lbc_tend_ru(k,iEdge) = (ru(k,iEdge) - lbc_tend_ru(k,iEdge)) * dt
-             lbc_tend_rho_edge(k,iEdge) = (rho_edge(k,iEdge) - lbc_tend_rho_edge(k,iEdge)) * dt
-          end do
-       end do
-
-       do iCell=1,nCells+1
-          do k=1,nVertLevels+1
-             lbc_tend_w(k,iCell) = (w(k,iCell) - lbc_tend_w(k,iCell)) * dt
-          end do
-       end do
-
-       do iCell=1,nCells+1
-          do k=1,nVertLevels
-             lbc_tend_theta(k,iCell) = (theta(k,iCell) - lbc_tend_theta(k,iCell)) * dt
-             lbc_tend_rtheta_m(k,iCell) = (rtheta_m(k,iCell) - lbc_tend_rtheta_m(k,iCell)) * dt
-             lbc_tend_rho_zz(k,iCell) = (rho_zz(k,iCell) - lbc_tend_rho_zz(k,iCell)) * dt
-             lbc_tend_rho(k,iCell) = (rho(k,iCell) - lbc_tend_rho(k,iCell)) * dt
-          end do
-       end do
-
-       do iCell=1,nCells+1
-          do k=1,nVertLevels
-             do j = 1,nScalars
-                lbc_tend_scalars(j,k,iCell) = (scalars(j,k,iCell) - lbc_tend_scalars(j,k,iCell)) * dt
-             end do
-          end do
-       end do
-
-       !
-       ! Logging the lbc start and end times appears to be backwards, but
-       ! until the end of this function, LBC_intv_end == the last interval
-       ! time and currTime == the next interval time.
-       !
-       call mpas_get_time(LBC_intv_end, dateTimeString=lbc_intv_start_string)
-       call mpas_get_time(currTime, dateTimeString=lbc_intv_end_string)
-       call mpas_log_write('----------------------------------------------------------------------')
-       call mpas_log_write('Updated lateral boundary conditions. LBCs are now valid')
-       call mpas_log_write('from '//trim(lbc_intv_start_string)//' to '//trim(lbc_intv_end_string))
-       call mpas_log_write('----------------------------------------------------------------------')
-
-    end if
-    LBC_intv_end = currTime
-    
-  end subroutine ufs_mpas_atm_update_bdy_tend
-
-!> ########################################################################################
- !>
- !> \brief  Computes local unit north, east, and edge-normal vectors
- !> \author Michael Duda
- !> \date   15 January 2020
- !> \details
- !>  This routine computes the local unit north and east vectors at all cell
- !>  centers, storing the resulting fields in the mesh pool as 'north' and
- !>  'east'. It also computes the edge-normal unit vectors by calling
- !>  the mpas_initialize_vectors routine. Before this routine is called,
- !>  the mesh pool must contain 'latCell' and 'lonCell' fields that are valid
- !>  for all cells (not just solve cells), plus any fields that are required
- !>  by the mpas_initialize_vectors routine.
- !>
- !> \update: Dustin Swales April 2025 - Modified for use in UWM
- !>
- !> ########################################################################################
+  !> ########################################################################################
  subroutine ufs_mpas_compute_unit_vectors()
    use mpas_pool_routines,     only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
    use mpas_derived_types,     only : mpas_pool_type
@@ -691,320 +427,6 @@ contains
    call mpas_initialize_vectors(meshPool)
 
  end subroutine ufs_mpas_compute_unit_vectors
-
- !> ########################################################################################
- !>
- !> \brief  Define the names of constituents at run-time
- !> \author Michael Duda
- !> \date   21 May 2020
- !> \details
- !>  Given an array of constituent names, which must have size equal to the number
- !>  of scalars that were set in the call to ufs_mpas_init_phase1, and given
- !>  a function to identify which scalars are moisture species, this routine defines
- !>  scalar constituents for the MPAS-A dycore.
- !>  Because the MPAS-A dycore expects all moisture constituents to appear in
- !>  a contiguous range of constituent indices, this routine may in general need
- !>  to reorder the constituents; to allow for mapping of indices between UFS
- !>  physics and the MPAS-A dycore, this routine returns index mapping arrays
- !>  mpas_from_ufs_cnst and ufs_from_mpas_cnst.
- !>
- !> \update: Dustin Swales April 2025 - Modified for use in UWM  
- !>
- !> ########################################################################################
- subroutine ufs_mpas_define_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
-   use mpas_derived_types, only : mpas_pool_type, field3dReal
-   use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_field, &
-                                  mpas_pool_get_dimension, mpas_pool_add_dimension
-   use mpas_attlist,       only : mpas_add_att
-   use mpas_log,           only : mpas_log_write
-   use mpas_derived_types, only : MPAS_LOG_ERR
-   ! FMS
-   use mpp_mod,              only : FATAL, mpp_error
-   
-   ! Arguments
-   integer, dimension(:), pointer :: mpas_from_ufs_cnst, ufs_from_mpas_cnst
-   integer, intent(out) :: ierr
-
-   ! Local variables
-   character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_define_scalars'
-   integer :: i, j, timeLevs
-   integer, pointer :: num_scalars
-   integer :: num_moist
-   integer :: idx_passive
-   type (mpas_pool_type), pointer :: statePool
-   type (mpas_pool_type), pointer :: tendPool
-   type (field3dReal), pointer :: scalarsField
-   character(len=128) :: tempstr
-   character :: moisture_char
-
-   ierr = 0
-
-   !
-   ! Define scalars
-   !
-   nullify(statePool)
-   call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', statePool)
-
-   if (.not. associated(statePool)) then
-      call mpas_log_write(trim(subname)//': ERROR: The ''state'' pool was not found.', &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   nullify(num_scalars)
-   call mpas_pool_get_dimension(statePool, 'num_scalars', num_scalars)
-
-   !
-   ! The num_scalars dimension should have been defined by atm_core_interface::atm_allocate_scalars, and
-   ! if this dimension does not exist, something has gone wrong
-   !
-   if (.not. associated(num_scalars)) then
-      call mpas_log_write(trim(subname)//': ERROR: The ''num_scalars'' dimension does not exist in the ''state'' pool.', &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   !
-   ! If at runtime there are not num_scalars names in the array of constituent names provided by UFS,
-   ! something has gone wrong
-   !
-   if (size(constituent_name) /= num_scalars) then
-      call mpas_log_write(trim(subname)//': ERROR: The number of constituent names is not equal to the num_scalars dimension', &
-                          messageType=MPAS_LOG_ERR)
-      call mpas_log_write('size(constituent_name) = $i, num_scalars = $i', intArgs=[size(constituent_name), num_scalars], &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   !
-   ! In UFS, the first scalar (if there are any) is always qv (specific humidity); if this is not
-   ! the case, something has gone wrong
-   !
-   if (size(constituent_name) > 0) then
-      if (trim(constituent_name(1)) /= 'qv') then
-         call mpas_log_write(trim(subname)//': ERROR: The first constituent is not qv', messageType=MPAS_LOG_ERR)
-         ierr = 1
-         return
-      end if
-   end if
-
-   !
-   ! Determine which of the constituents are moisture species
-   !
-   allocate(mpas_from_ufs_cnst(num_scalars), stat=ierr)
-   if( ierr /= 0 ) call mpp_error(FATAL,subname//':failed to allocate mpas_from_ufs_cnst array')
-   mpas_from_ufs_cnst(:) = 0
-   num_moist = 0
-   do i = 1, size(constituent_name)
-      if (is_water_species(i)) then
-         num_moist = num_moist + 1
-         mpas_from_ufs_cnst(num_moist) = i
-      end if
-   end do
-
-   !
-   ! If UFS has no scalars, let the only scalar in MPAS be 'qv' (a moisture species)
-   !
-   if (num_scalars == 1 .and. size(constituent_name) == 0) then
-      num_moist = 1
-   end if
-
-   !
-   ! Assign non-moisture constituents to mpas_from_ufs_cnst(num_moist+1:size(constituent_name))
-   !
-   idx_passive = num_moist + 1
-   do i = 1, size(constituent_name)
-
-      ! If UFS constituent i is not already mapped as a moist constituent
-      if (.not. is_water_species(i)) then
-         mpas_from_ufs_cnst(idx_passive) = i
-         idx_passive = idx_passive + 1
-      end if
-   end do
-
-   !
-   ! Create inverse map, ufs_from_mpas_cnst
-   !
-   allocate(ufs_from_mpas_cnst(num_scalars), stat=ierr)
-   if( ierr /= 0 ) call mpp_error(FATAL,subname//':failed to allocate ufs_from_mpas_cnst array')
-   ufs_from_mpas_cnst(:) = 0
-
-   do i = 1, size(constituent_name)
-      ufs_from_mpas_cnst(mpas_from_ufs_cnst(i)) = i
-   end do
-
-   timeLevs = 2
-
-   do i = 1, timeLevs
-      nullify(scalarsField)
-      call mpas_pool_get_field(statePool, 'scalars', scalarsField, timeLevel=i)
-
-      if (.not. associated(scalarsField)) then
-         call mpas_log_write(trim(subname)//': ERROR: The ''scalars'' field was not found in the ''state'' pool', &
-                             messageType=MPAS_LOG_ERR)
-         ierr = 1
-         return
-      end if
-
-      if (i == 1) call mpas_pool_add_dimension(statePool, 'index_qv', 1)
-      scalarsField % constituentNames(1) = 'qv'
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg kg^{-1}')
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Water vapor mixing ratio')
-
-      do j = 2, size(constituent_name)
-         scalarsField % constituentNames(j) = trim(constituent_name(mpas_from_ufs_cnst(j)))
-      end do
-
-   end do
-
-   call mpas_pool_add_dimension(statePool, 'moist_start', 1)
-   call mpas_pool_add_dimension(statePool, 'moist_end', num_moist)
-
-   !
-   ! Print a tabular summary of the mapping between constituent indices
-   !
-   call mpas_log_write('')
-   call mpas_log_write('  i MPAS constituent mpas_from_ufs_cnst(i)       i UFS constituent  ufs_from_mpas_cnst(i)')
-   call mpas_log_write('------------------------------------------     ------------------------------------------')
-   do i = 1, min(num_scalars, size(constituent_name))
-      if (i <= num_moist) then
-         moisture_char = '*'
-      else
-         moisture_char = ' '
-      end if
-      write(tempstr, '(i3,1x,a16,1x,i18,8x,i3,1x,a16,1x,i18)') i, trim(scalarsField % constituentNames(i))//moisture_char, &
-                                                               mpas_from_ufs_cnst(i), &
-                                                               i, trim(constituent_name(i)), &
-                                                               ufs_from_mpas_cnst(i)
-      call mpas_log_write(trim(tempstr))
-   end do
-   call mpas_log_write('------------------------------------------     ------------------------------------------')
-   call mpas_log_write('* = constituent used as a moisture species in MPAS-A dycore')
-   call mpas_log_write('')
-
-
-   !
-   ! Define scalars_tend
-   !
-   nullify(tendPool)
-   call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend', tendPool)
-
-   if (.not. associated(tendPool)) then
-      call mpas_log_write(trim(subname)//': ERROR: The ''tend'' pool was not found.', &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   timeLevs = 1
-
-   do i = 1, timeLevs
-      nullify(scalarsField)
-      call mpas_pool_get_field(tendPool, 'scalars_tend', scalarsField, timeLevel=i)
-
-      if (.not. associated(scalarsField)) then
-         call mpas_log_write(trim(subname)//': ERROR: The ''scalars_tend'' field was not found in the ''tend'' pool', &
-                             messageType=MPAS_LOG_ERR)
-         ierr = 1
-         return
-      end if
-
-      if (i == 1) call mpas_pool_add_dimension(tendPool, 'index_qv', 1)
-      scalarsField % constituentNames(1) = 'tend_qv'
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg m^{-3} s^{-1}')
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Tendency of water vapor mixing ratio')
-
-      do j = 2, size(constituent_name)
-         scalarsField % constituentNames(j) = 'tend_'//trim(constituent_name(mpas_from_ufs_cnst(j)))
-      end do
-   end do
-
-   call mpas_pool_add_dimension(tendPool, 'moist_start', 1)
-   call mpas_pool_add_dimension(tendPool, 'moist_end', num_moist)
-
- end subroutine ufs_mpas_define_scalars
-
- !> ########################################################################################
- !>
- !> ########################################################################################
- subroutine ufs_mpas_define_lbc_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
-   use mpas_derived_types, only : mpas_pool_type, field3dReal, MPAS_LOG_ERR
-   use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_field
-   use mpas_pool_routines, only : mpas_pool_get_dimension, mpas_pool_add_dimension
-   use mpas_attlist,       only : mpas_add_att
-   use mpas_log,           only : mpas_log_write
-
-   ! Arguments
-   integer, dimension(:), pointer :: mpas_from_ufs_cnst, ufs_from_mpas_cnst
-   integer, intent(out) :: ierr
-
-   ! Local variables
-   character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_define_lbc_scalars'
-   type (mpas_pool_type), pointer :: lbcPool
-   integer, pointer :: num_scalars
-   integer :: i, j, timeLevs, num_moist
-   type (field3dReal), pointer :: scalarsField
-
-   ierr = 0
-
-   !
-   ! Define lbc_scalars
-   !
-   nullify(lbcPool)
-   call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'lbc', lbcPool)
-
-   if (.not. associated(lbcPool)) then
-      call mpas_log_write(trim(subname)//': ERROR: The ''lbc'' pool was not found.', &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   nullify(num_scalars)
-   call mpas_pool_get_dimension(lbcPool, 'num_scalars', num_scalars)
-
-   !
-   ! The num_scalars dimension should have been defined by atm_core_interface::atm_allocate_lbc_scalars, and
-   ! if this dimension does not exist, something has gone wrong.
-   !
-   if (.not. associated(num_scalars)) then
-      call mpas_log_write(trim(subname)//': ERROR: The ''num_scalars'' dimension does not exist in the ''lbc'' pool.', &
-                          messageType=MPAS_LOG_ERR)
-      ierr = 1
-      return
-   end if
-
-   timeLevs = 2
-
-   do i = 1, timeLevs
-      nullify(scalarsField)
-      call mpas_pool_get_field(lbcPool, 'lbc_scalars', scalarsField, timeLevel=i)
-
-      if (.not. associated(scalarsField)) then
-         call mpas_log_write(trim(subname)//': ERROR: The ''lbc_scalars'' field was not found in the ''lbc'' pool', &
-                             messageType=MPAS_LOG_ERR)
-         ierr = 1
-         return
-      end if
-
-      !if (i == 1) call mpas_pool_add_dimension(lbcPool, 'index_qv', 1)
-      scalarsField % constituentNames(1) = 'lbc_qv'
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'units', 'kg kg^{-1}')
-      call mpas_add_att(scalarsField % attLists(1) % attList, 'long_name', 'Water vapor mixing ratio')
-
-      do j = 2, size(constituent_name)
-         scalarsField % constituentNames(j) = 'lbc_'//trim(constituent_name(mpas_from_ufs_cnst(j)))
-      end do
-
-   end do
-
-   call mpas_pool_add_dimension(lbcPool, 'moist_start', 1)
-   call mpas_pool_add_dimension(lbcPool, 'moist_end', num_moist)
-
- end subroutine ufs_mpas_define_lbc_scalars
  
  !> ########################################################################################
  !>
@@ -1141,72 +563,7 @@ contains
    deallocate(temp)
 
  end subroutine ufs_mpas_get_global_coords
- 
- ! ##########################################################################################
- ! \update: Dustin Swales April 2025 - Modified for use in UWM
- ! ##########################################################################################
- character(len=10) function date2yyyymmdd (date)
-   ! Input arguments
-   integer, intent(in) :: date
 
-   ! Local workspace
-   integer :: year    ! year of yyyy-mm-dd
-   integer :: month   ! month of yyyy-mm-dd
-   integer :: day     ! day of yyyy-mm-dd
-
-   year  = date / 10000
-   month = (date - year*10000) / 100
-   day   = date - year*10000 - month*100
-
-   write(date2yyyymmdd,80) year, month, day
-80 format(i4.4,'-',i2.2,'-',i2.2)
-
- end function date2yyyymmdd
- ! #########################################################################################
- ! \update: Dustin Swales April 2025 - Modified for use in UWM
- ! #########################################################################################
- character(len=8) function sec2hms (seconds)
-   ! Input arguments
-   integer, intent(in) :: seconds
-
-   ! Local workspace
-   integer :: hours     ! hours of hh:mm:ss
-   integer :: minutes   ! minutes of hh:mm:ss
-   integer :: secs      ! seconds of hh:mm:ss
-
-   hours   = seconds / 3600
-   minutes = (seconds - hours*3600) / 60
-   secs    = (seconds - hours*3600 - minutes*60)
-
-   write(sec2hms,80) hours, minutes, secs
-80 format(i2.2,':',i2.2,':',i2.2)
-
- end function sec2hms
-
- ! #########################################################################################
- ! \update: Dustin Swales April 2025 - Modified for use in UWM
- ! #########################################################################################
- character(len=10) function int2str(n)
-   ! return default integer as a left justified string
-   ! arguments
-   integer, intent(in) :: n
-
-   write(int2str,'(i0)') n
-     
- end function int2str
-
-  character(len=10) function log2str(n)
-   ! return default integer as a left justified string
-   ! arguments
-   logical, intent(in) :: n
-
-   if (n) then
-      write(log2str,'(a4)') 'TRUE'
-   else
-      write(log2str,'(a4)') 'FALSE'
-   endif
-
- end function log2str
  !> ########################################################################################
  !>
  !> subroutine dyn_mpas_exchange_halo
@@ -1395,9 +752,10 @@ contains
  !> \update: Dustin Swales April 2025 - Modified for use in UWM
  !>
  !> ########################################################################################
- subroutine dyn_mpas_read_write_stream(clock, stream_mode, stream_name, pio_file_desc, timeLevel, when, whence, actualWhen, nRecord, ierr)
+ subroutine dyn_mpas_read_write_stream(clock, stream_mode, stream_name, pio_file_desc,     &
+      timeLevel, when, whence, actualWhen, nRecord, ierr)
    ! Module(s) from external libraries.
-   use pio, only: file_desc_t
+   use pio,                 only : file_desc_t
    use mpp_mod,             only : FATAL, mpp_error
    ! Module(s) from MPAS.
    use mpas_derived_types,  only : mpas_pool_type, mpas_stream_noerr, mpas_stream_type
@@ -1405,9 +763,9 @@ contains
    use mpas_pool_routines,  only : mpas_pool_destroy_pool
    use mpas_stream_manager, only : postread_reindex, prewrite_reindex, postwrite_reindex
    use mpas_log,            only : mpas_log_write
-   use mpas_atm_halos,      only : exchange_halo_group
    use mpas_io_streams,     only : MPAS_STREAM_EXACT_TIME
    use mpas_timekeeping,    only : mpas_get_clock_time, MPAS_NOW
+   ! Arguments
    type (mpas_clock_type), intent(in) :: clock
    character(*), intent(in) :: stream_mode
    character(*), intent(in) :: stream_name
@@ -1418,7 +776,7 @@ contains
    character (len=*), intent(out), optional :: actualWhen
    integer, intent(in) :: nRecord
    integer, intent(out) :: ierr
-   
+   ! Local variables
    character(*), parameter :: subname = 'dyn_mpas_subdriver::dyn_mpas_read_write_stream'
    integer :: i
    type(mpas_pool_type), pointer :: mpas_pool
@@ -2501,13 +1859,8 @@ contains
       case (3)
          call mpas_pool_get_field(domain_ptr % blocklist % allfields, &
               trim(adjustl(var_info % name)), field_3d_real, timelevel=1)
-          call mpas_log_write('IMP_DIAG check_variable_status name = '//trim(adjustl(var_info % name)))
          if (.not. associated(field_3d_real)) then
             call mpp_error(FATAL,subname//'Failed to find variable "' // trim(adjustl(var_info % name)) // '"')
-         end if
-         call mpas_log_write('IMP_DIAG check_variable_status vararray = '//stringify([field_3d_real % isvararray]))
-         if (associated(field_3d_real % constituentnames)) then
-             call mpas_log_write('IMP_DIAG check_variable_status nconst   = '//stringify([size(field_3d_real % constituentnames)]))
          end if
          if (field_3d_real % isvararray .and. associated(field_3d_real % constituentnames)) then
             allocate(var_name_list(size(field_3d_real % constituentnames)), stat=ierr)
@@ -2517,9 +1870,6 @@ contains
             end if
 
             var_name_list(:) = field_3d_real % constituentnames(:)
-         end if
-         if (associated(field_3d_real % constituentnames)) then
-             call mpas_log_write('IMP_DIAG check_variable_status nconst2  = '//stringify([size(field_3d_real % constituentnames)]))
          end if
          nullify(field_3d_real)
       case (4)
@@ -2569,7 +1919,6 @@ contains
            '" for "' // trim(adjustl(var_info % name)) // '"')
    end select
 
-   call mpas_log_write('IMP_DIAG check_variable_status 1')
    if (.not. allocated(var_name_list)) then
       allocate(var_name_list(1), stat=ierr)
 
@@ -2579,7 +1928,7 @@ contains
 
       var_name_list(1) = var_info % name
    end if
-   call mpas_log_write('IMP_DIAG check_variable_status 2')
+
    allocate(var_is_present(size(var_name_list)), stat=ierr)
 
    if (ierr /= 0) then
@@ -2587,14 +1936,12 @@ contains
    end if
 
    var_is_present(:) = .false.
-   call mpas_log_write('IMP_DIAG check_variable_status 3')
    allocate(var_is_tkr_compatible(size(var_name_list)), stat=ierr)
    if (ierr /= 0) then
       call mpp_error(FATAL,subname//'Failed to allocate var_is_tkr_compatible')
    end if
 
    var_is_tkr_compatible(:) = .false.
-   call mpas_log_write('IMP_DIAG check_variable_status 4')
    if (.not. associated(pio_file)) then
       return
    end if
@@ -2605,12 +1952,10 @@ contains
 
    call mpas_log_write('Checking variable "' // trim(adjustl(var_info % name)) // &
         '" for presence and TKR compatibility')
-   call mpas_log_write('IMP_DIAG check_variable_status 5 size(var_name_list) = '//stringify([size(var_name_list)]))
    do i = 1, size(var_name_list)
       ! Check if the variable is present on the file.
-      call mpas_log_write('IMP_DIAG check_variable_status 5 var_name_list(i) = '//trim(adjustl(var_name_list(i))))
       ierr = pio_inq_varid(pio_file, trim(adjustl(var_name_list(i))), varid)
-      call mpas_log_write('IMP_DIAG check_variable_status 5b')
+
       if (ierr /= pio_noerr) then
          cycle
       end if
@@ -2650,10 +1995,9 @@ contains
       case default
          cycle
       end select
-      call mpas_log_write('IMP_DIAG check_variable_status 5c')
+
       ! Check if the variable is TK"R" compatible between MPAS and the file.
       ierr = pio_inq_varndims(pio_file, varid, varndims)
-      call mpas_log_write('IMP_DIAG check_variable_status 5d')
       if (ierr /= pio_noerr) then
          cycle
       end if
@@ -2664,7 +2008,7 @@ contains
 
       var_is_tkr_compatible(i) = .true.
    end do
-   call mpas_log_write('IMP_DIAG check_variable_status 6')
+
    call mpas_log_write('var_name_list = ' // stringify(var_name_list))
    call mpas_log_write('var_is_present = ' // stringify(var_is_present))
    call mpas_log_write('var_is_tkr_compatible = ' // stringify(var_is_tkr_compatible))
@@ -2672,4 +2016,4 @@ contains
    call mpas_log_write(subname // ' completed')
  end subroutine dyn_mpas_check_variable_status
 
-end module ufs_mpas_module
+end module ufs_mpas_io

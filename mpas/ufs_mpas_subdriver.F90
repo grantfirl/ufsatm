@@ -13,17 +13,11 @@
 !> time. Afterwards, atm_compute_output_diagnostics() is called to compute fields needed by
 !> the Physics.
 !>
-!> Other public routines used the UFSATM driver
-!> ufs_mpas_open_init     :  Open MPAS Initial Condition file, return PIO file handle.
-!> ufs_mpas_open_lbc      :  Open MPAS Lateral Boundary Condition file, return PIO file handle.
-!>
 !> ###########################################################################################
 module ufs_mpas_subdriver
   use mpi_f08
   use mpas_kind_types,    only : StrKIND, rkind
-  use module_mpas_config, only : ic_filename,  pioid_ic,  pio_subsystem_ic
-  use module_mpas_config, only : lbc_filename, pioid_lbc, pio_subsystem_lbc
-  use module_mpas_config, only : pio_iotype, pio_stride, pio_numiotasks, pio_iodesc
+  use module_mpas_config, only : pioid_ic
   use module_mpas_config, only : fcst_mpi_comm
   use module_mpas_config, only : zref, zref_edge, sphere_radius, pref, pref_edge
   use module_mpas_config, only : maxNCells, maxEdges, nVertLevels
@@ -31,7 +25,11 @@ module ufs_mpas_subdriver
   use module_mpas_config, only : nEdgesSolve, nVerticesSolve, nVertLevelsSolve
   use module_mpas_config, only : dt_atmos, n_atmos
   use module_mpas_config, only : latCellGlobal, lonCellGlobal, areaCellGlobal
-  use ufs_mpas_module
+  use ufs_mpas_tools
+  use ufs_mpas_io
+  use ufs_mpas_boundaries
+  use ufs_mpas_constituents
+
   implicit none
 
   private
@@ -39,8 +37,6 @@ module ufs_mpas_subdriver
   public :: MPAS_control_type
   public :: ufs_mpas_init
   public :: ufs_mpas_run
-  public :: ufs_mpas_open_init
-  public :: ufs_mpas_open_lbc
 
   logical :: init_lbc    = .true.
   integer :: nRecord_lbc = 1
@@ -109,7 +105,8 @@ contains
     use mpas_bootstrapping,         only : mpas_bootstrap_framework_phase1
     use mpas_bootstrapping,         only : mpas_bootstrap_framework_phase2
     use mpas_stream_inquiry,        only : mpas_stream_inquiry_new_streaminfo
-    use mpas_derived_types,         only : mpas_pool_type, mpas_IO_NETCDF, field3dReal, MPAS_STREAM_LATEST_BEFORE, MPAS_STREAM_MGR_NOERR, MPAS_LOG_ERR
+    use mpas_derived_types,         only : mpas_pool_type, mpas_IO_NETCDF, field3dReal
+    use mpas_derived_types,         only : MPAS_STREAM_MGR_NOERR, MPAS_LOG_ERR
     use mpas_kind_types,            only : StrKIND, RKIND
     use mpas_log,                   only : mpas_log_write
     use atm_core_interface,         only : atm_setup_core, atm_setup_domain
@@ -320,7 +317,6 @@ contains
     if( ierr /= 0 ) then
        call mpp_error(FATAL,subname//": Could not find sphere_radius PIO attribute")
     endif
-    call mpas_log_write('sphere_radius = '//stringify([domain_ptr % sphere_radius]))
 
     ! FROM CAM/dyn_grid.F90:dyn_grid_init()
     ! Query global grid dimensions from MPAS
@@ -358,7 +354,8 @@ contains
     use mpas_atm_threading,         only : mpas_atm_threading_init
     use mpp_mod,                    only : FATAL, mpp_error
     use mpas_atm_halos,             only : atm_build_halo_groups, exchange_halo_group
-    use atm_core,                   only : atm_mpas_init_block, mpas_atm_run_compatibility
+    use atm_core,                   only : atm_mpas_init_block
+    use atm_time_integration,       only : mpas_atm_dynamics_checks
     use atm_time_integration,       only : mpas_atm_dynamics_init
     use mpas_timekeeping,           only : mpas_get_clock_time, mpas_get_time, mpas_START_TIME
     use mpas_timekeeping,           only : mpas_NOW
@@ -444,11 +441,6 @@ contains
        call mpp_error(FATAL,'ERROR: Could not read from ''input'' stream ')
     end if
 
-    ! What is the shape of scalars?
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
-    call mpas_pool_get_array(state, 'scalars',field_3d_real, timelevel=1)
-    call mpas_log_write('IMP_DIAG ufs_mpas_atm_core_init: shape(scalars)           = '//stringify([shape(field_3d_real)]))
-
     !
     ! Read in restart data.
     !
@@ -491,10 +483,18 @@ contains
     !
     ! Perform basic compatibility checks among the fields that were read and the run-time options that were selected
     !
-    !call mpas_atm_run_compatibility(domain_ptr % dminfo, domain_ptr % blocklist, domain_ptr % streamManager, ierr=ierr)
+    call mpas_atm_dynamics_checks(domain_ptr % dminfo, domain_ptr % blocklist, domain_ptr % streamManager, ierr)
     if (ierr /= 0) then
-       call mpas_log_write('Please correct issues with the model input fields and/or namelist.')
+       call mpas_log_write('Failed dynamics compatibility test.')
        return
+    end if
+    call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_apply_lbcs', config_apply_lbcs)
+    if (config_apply_lbcs) then
+       call ufs_mpas_atm_bdy_checks(domain_ptr % dminfo, domain_ptr % blocklist, ierr)
+       if (ierr /= 0) then
+          call mpas_log_write('Failed regional compatibility test.')
+          return
+       end if
     end if
 
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh', mesh)
@@ -549,8 +549,6 @@ contains
     use mpas_timekeeping,     only : mpas_advance_clock, mpas_get_clock_time, mpas_get_time
     use mpas_timekeeping,     only : mpas_NOW, mpas_is_clock_stop_time, mpas_dmpar_get_time
     use mpas_timekeeping,     only : mpas_set_timeInterval, operator(+), operator(.LT.), operator(.GT.), operator(.LE.)
-    use ufs_mpas_module,      only : ufs_mpas_atm_update_bdy_tend
-    use mpas_atm_boundaries,  only : LBC_intv_end
     ! FMS
     use mpp_mod,              only : FATAL, mpp_error
     ! Locals
@@ -563,10 +561,12 @@ contains
     real (kind=R8KIND) :: integ_start_time, integ_stop_time
     logical, pointer :: config_apply_lbcs
     type(mpas_timeinterval_type) :: mpas_time_interval
+    real (kind=RKIND), dimension(:,:,:), pointer :: scalars
 
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)
+    call atm_compute_output_diagnostics(state, 1, diag, mesh)
 
     ! Eventually, dt should be domain specific
     call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_dt', config_dt)
@@ -664,6 +664,9 @@ contains
     ! Compute diagnostic fields  (theta, rho, pres) from
     ! the final prognostic state (theta_m, rho_zz, zz)
     !
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)
     call atm_compute_output_diagnostics(state, 1, diag, mesh)
 
     !
@@ -676,112 +679,6 @@ contains
     call ufs_mpas_write("output", timeStamp)
 
   end subroutine ufs_mpas_run
-
-  !> #########################################################################################
-  !> Procedure to create and write to MPAS stream 
-  !>
-  !> #########################################################################################
-  subroutine ufs_mpas_write(stream_name, timestamp)
-    use pio, only : pio_openfile, pio_createfile, PIO_WRITE, PIO_CLOBBER
-    use module_mpas_config, only : ic_filename,  pioid_output, &
-         pio_subsystem_output, output_filename, restart_filename, &
-         pio_subsystem_output_file_created, &
-         TIMELEVEL_NOW, pio_subsystem_output_record
-    use mpas_log, only : mpas_log_write
-    use mpas_timekeeping, only : MPAS_NOW, MPAS_STREAM_EARLIEST_STRICTLY_AFTER
-    use mpp_mod, only : mpp_error, FATAL
-    ! Arguments
-    character(len=*), intent(in) :: stream_name
-    character(len=*), intent(in) :: timestamp
-    ! Locals
-    character(len=*), parameter :: subname = &
-         'ufs_mpas_subdriver::ufs_mpas_write'
-    character(len=:), allocatable :: filename
-    integer :: ierr
-    type(var_info_type), allocatable :: output_var_info_list(:)
-    integer :: timelevel, whence
-    logical, parameter :: debug = .true.
-
-    if (trim(stream_name) == "output") then
-       filename = 'history.'//trim(timestamp)//'.nc'
-    else if (trim(stream_name) == "restart") then
-       filename = 'restart.'//trim(timestamp)//'.nc'
-    else if (trim(stream_name) == "input") then
-       filename = 'input.'//trim(timestamp)//'.nc'
-    else
-       stop "Invalid stream_name to ufs_mpas_write: stream_name =" &
-            //trim(stream_name)
-    end if
-
-    if (debug) call mpas_log_write("entering ufs_mpas_write")
-    if (debug) call mpas_log_write("creating "//trim(stream_name)//" stream file: "//trim(filename))
-    ierr = pio_createfile(pio_subsystem_output, pioid_output, pio_iotype, trim(filename))
-    if ( ierr /= 0 ) call mpp_error(FATAL, subname//": pio_createfile failed ")
-
-    output_var_info_list = parse_stream_name_fragment('output')
-    timelevel = TIMELEVEL_NOW
-    whence = MPAS_NOW
-
-    call dyn_mpas_read_write_stream(clock, "write", stream_name, pioid_output, &
-         timeLevel=timelevel, whence=whence, &
-         nRecord=1, ierr=ierr)
-    if ( ierr /= 0 ) call mpp_error(FATAL, &
-         subname//": dyn_mpas_read_write_stream failed ")
-
-    if (debug) call mpas_log_write("exiting ufs_mpas_write")
-  end subroutine ufs_mpas_write
-
-  !> #########################################################################################
-  !> Procedure to open MPAS IC file.
-  !>
-  !> #########################################################################################
-  subroutine ufs_mpas_open_init()
-    ! PIO
-    use pio,         only : pio_openfile, pio_nowrite
-    ! FMS
-    use fms2_io_mod, only : file_exists
-    use mpp_mod,     only : FATAL, mpp_error
-    ! Arguments
-    ! Locals
-    integer :: ierr
-    character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_open_init'
-
-    ! Open MPAS Initial Condition file.
-    if (file_exists(ic_filename)) then
-       ierr = pio_openfile(pio_subsystem_ic, pioid_ic, pio_iotype, ic_filename, pio_nowrite)
-       if (ierr /= 0) then
-          call mpp_error(FATAL,subname//": Failed opening MPAS IC File, "//trim(ic_filename))
-       end if
-    else
-       call mpp_error(FATAL,subname//": Cannot find MPAS IC file: "//trim(ic_filename))
-    end if
-  end subroutine ufs_mpas_open_init
-
-  !> #########################################################################################
-  !> Procedure to open MPAS Lateral Boundary Condition file.
-  !>
-  !> #########################################################################################
-  subroutine ufs_mpas_open_lbc()
-    ! PIO
-    use pio,         only : pio_openfile, pio_nowrite
-    ! FMS
-    use fms2_io_mod, only : file_exists
-    use mpp_mod,     only : FATAL, mpp_error
-    ! Arguments
-    ! Locals
-    integer :: ierr
-    character(len=*), parameter :: subname = 'ufs_mpas_subdriver::ufs_mpas_open_lbc'
-
-    ! Open MPAS Initial Condition file.
-    if (file_exists(lbc_filename)) then
-       ierr = pio_openfile(pio_subsystem_lbc, pioid_lbc, pio_iotype, lbc_filename, pio_nowrite)
-       if (ierr /= 0) then
-          call mpp_error(FATAL,subname//": Failed opening MPAS LBC File, "//trim(lbc_filename))
-       end if
-    else
-       call mpp_error(FATAL,subname//": Cannot find MPAS LBC file: "//trim(lbc_filename))
-    end if
-  end subroutine ufs_mpas_open_lbc
 
   !> #########################################################################################
   !> Procedure to read MPAS namelist(s).

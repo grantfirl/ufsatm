@@ -105,12 +105,12 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_init(Atmos, Time_init, Time, Time_end, Time_step, mpicomm, calendar)
-    use ufs_mpas_subdriver, only : MPAS_control_type
-    use ufs_mpas_subdriver, only : ufs_mpas_init
-    use ufs_mpas_subdriver, only : ufs_mpas_open_init, ufs_mpas_open_lbc
-    use ufs_mpas_module,    only : constituent_name, is_water_species
-    use atmos_coupling_mod, only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics
-    use MPAS_init,          only : MPAS_initialize
+    use ufs_mpas_subdriver,     only : MPAS_control_type
+    use ufs_mpas_subdriver,     only : ufs_mpas_init
+    use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc
+    use ufs_mpas_constituents,  only : constituent_name, is_water_species
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics
+    use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
     type(atmos_control_type), intent(inout) :: Atmos
