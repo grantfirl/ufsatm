@@ -159,8 +159,8 @@ contains
   !> CCPP "state" needed by the physics.
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_to_physics(physics_state)
-    use GFS_typedefs,         only : GFS_statein_type
+  subroutine ufs_mpas_to_physics(physics_state, surface_state)
+    use GFS_typedefs,         only : GFS_statein_type, GFS_sfcprop_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use atm_core,             only : atm_compute_output_diagnostics
@@ -169,6 +169,7 @@ contains
 
     ! Arguments
     type(GFS_statein_type),   intent(inout) :: physics_state
+    type(GFS_sfcprop_type),   intent(inout) :: surface_state
     ! Locals
     type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: state_pool
@@ -213,19 +214,27 @@ contains
 
     ! Copy fields from MPAS data containers to physics data containers.
     ! [k, i] -> [i, k]
-    ! bottom-up -> top-down ordering convention
+    ! Retain bottom-up convention
     do iCol = 1, nCellsSolve
-       physics_state % tgrs(iCol,:)   = MPAS_state % theta(nVertLevels:1:-1,iCol)
-       physics_state % ugrs(iCol,:)   = MPAS_state % ux(nVertLevels:1:-1,iCol)
-       physics_state % vgrs(iCol,:)   = MPAS_state % uy(nVertLevels:1:-1,iCol)
-       physics_state % phil(iCol,:)   = MPAS_state % zz(nVertLevels:1:-1,iCol)
-       physics_state % phii(iCol,:)   = MPAS_state % zgrid(nVertLevels+1:1:-1,iCol)
-       physics_state % prslk(iCol,:)  = MPAS_state % exner(nVertLevels:1:-1,iCol)
-       physics_state % vvl(iCol,:)    = MPAS_state % w(nVertLevels:1:-1,iCol)
+       physics_state % tgrs(iCol,:)   = MPAS_state % theta(:,iCol)*MPAS_state % exner(:,iCol)
+       physics_state % ugrs(iCol,:)   = MPAS_state % ux(:,iCol)
+       physics_state % vgrs(iCol,:)   = MPAS_state % uy(:,iCol)
+       physics_state % phil(iCol,:)   = MPAS_state % zz(:,iCol)
+       physics_state % phii(iCol,:)   = MPAS_state % zgrid(:,iCol)
+       physics_state % prslk(iCol,:)  = MPAS_state % exner(:,iCol)
+       ! MPAS provides vertical velocity at interfaces, compute layer mean.
+       do iLay=1,nVertLevels
+          physics_state % vvl(iCol,iLay) = 0.5*(MPAS_state % w(iLay,iCol) + MPAS_state % w(iLay+1,iCol))
+       enddo
        do iTracer = 1,num_scalars
-          physics_state % qgrs(iCol,:,iTracer) = MPAS_state % tracers(iTracer,nVertLevels:1:-1,iCol)
+          physics_state % qgrs(iCol,:,iTracer) = MPAS_state % tracers(iTracer,:,iCol)
        enddo
     enddo    
+
+    ! Set surface temperature to lowest level temperature (revisit for coupling)
+    do iCol = 1, nCellsSolve
+       surface_state % tsfc(iCol) = MPAS_state % theta(1,iCol)*MPAS_state % exner(1,iCol)
+    enddo
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
@@ -253,13 +262,12 @@ contains
 
     ! Copy MPAS pressures into physics data containers.
     ! [k, i] -> [i, k]
-    ! bottom-up -> top-down ordering convention
+    ! Retain bottom-up convention
     do iCol = 1, nCellsSolve
-       physics_state % pgr(iCol)    = MPAS_state % pintdry(1,iCol)
-       physics_state % prsl(iCol,:) = MPAS_state % pmiddry(nVertLevels:1:-1,iCol)
-       physics_state % prsi(iCol,:) = MPAS_state % pintdry(nVertLevels+1:1:-1,iCol)
+       physics_state % pgr(iCol)    = MPAS_state % pintdry(nVertLevels+1,iCol)
+       physics_state % prsl(iCol,:) = MPAS_state % pmiddry(:,iCol)
+       physics_state % prsi(iCol,:) = MPAS_state % pintdry(:,iCol)
     enddo
-
     ! Housekeeping
     nullify (mesh_pool)
     nullify (state_pool)
@@ -541,7 +549,7 @@ contains
       end if
     end if
     if (ierr/=0)  call mpp_error(FATAL, 'Call to ufs_mpas_grid_to_physics() failed')  
-    
+
     do i=1, nCellsSolve
       physics_grid % xlat(i)   = lat(i)
       physics_grid % xlon(i)   = lon(i)
