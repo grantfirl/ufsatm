@@ -258,15 +258,30 @@ module ufs_mpas_io
        !var_info_type('pressure'                        , 'real'      , 2), &
        !var_info_type('relhum'                          , 'real'      , 2), &
        !var_info_type('rho'                             , 'real'      , 2), &
-       var_info_type('scalars'                         , 'real'      , 3), &
+       !var_info_type('scalars'                         , 'real'      , 3), &
        var_info_type('surface_pressure'                , 'real'      , 1), &
        var_info_type('theta'                           , 'real'      , 2), &
        !var_info_type('u'                               , 'real'      , 2), &
        var_info_type('uReconstructMeridional'          , 'real'      , 2), &
        var_info_type('uReconstructZonal'               , 'real'      , 2), &
        var_info_type('vorticity'                       , 'real'      , 2), &
-       var_info_type('w'                               , 'real'      , 2) &
-       !var_info_type('zz'                              , 'real'      , 2)  &
+       var_info_type('w'                               , 'real'      , 2), &
+       var_info_type('swdnb'                           , 'real'      , 1), &
+       var_info_type('swdnbc'                          , 'real'      , 1), &
+       var_info_type('swdnt'                           , 'real'      , 1), &
+       var_info_type('swdntc'                          , 'real'      , 1), &
+       var_info_type('swupb'                           , 'real'      , 1), &
+       var_info_type('swupbc'                          , 'real'      , 1), &
+       var_info_type('swupt'                           , 'real'      , 1), &
+       var_info_type('swuptc'                          , 'real'      , 1), &
+       var_info_type('lwdnb'                           , 'real'      , 1), &
+       var_info_type('lwdnbc'                          , 'real'      , 1), &
+       var_info_type('lwdnt'                           , 'real'      , 1), &
+       var_info_type('lwdntc'                          , 'real'      , 1), &
+       var_info_type('lwupb'                           , 'real'      , 1), &
+       var_info_type('lwupbc'                          , 'real'      , 1), &
+       var_info_type('lwupt'                           , 'real'      , 1), &
+       var_info_type('lwuptc'                          , 'real'      , 1) &
     ]
   
 contains
