@@ -730,8 +730,7 @@ contains
     ! Are we at requested output time? If so, write output stream
     if ((timeNow .EQ. mpas_output_times(out_file_index)) .or. (present(write_at_ic_time))) then
        call mpp_clock_begin(outClock)
-       call ufs_mpas_write("output", timeStamp)
-       call ufs_mpas_write("diag_phys", timeStamp)
+       call ufs_mpas_write("output+diag_phys", timeStamp)
        call mpp_clock_end(outClock)
        out_file_index = out_file_index + 1
     endif

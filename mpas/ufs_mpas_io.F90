@@ -368,6 +368,8 @@ contains
 
     if (trim(stream_name) == "output") then
        filename = 'history.'//trim(timestamp)//'.nc'
+    else if (trim(stream_name) == "output+diag_phys") then
+       filename = 'history.'//trim(timestamp)//'.nc'
     else if (trim(stream_name) == "restart") then
        filename = 'restart.'//trim(timestamp)//'.nc'
     else if (trim(stream_name) == "input") then
