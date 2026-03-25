@@ -14,6 +14,7 @@ module atmos_coupling_mod
   public :: ufs_microphysics_to_mpas
   public :: ufs_mpas_to_microphysics
   public :: ufs_mpas_grid_to_physics
+  public :: ufs_mpas_phys_diag
 
   !> #######################################################################################
   !> MPAS_statein_type
@@ -278,12 +279,101 @@ contains
   !> #########################################################################################
   !> Procedure to update state with physics tendencies prior to calling MPAS dynamical core.
   !>
+  !> - Aggregate all scheme tendencies (tend_th_phys)
+  !> - Convert from theta to theta_m (tend_theta_phys)
+  !> - Update dynamic tendencies. (tend_theta_dyn = tend_theta_dyn + tend_theta_phys)
+  !>
   !> Analogous to phys_get_tend in physics/mpas_atmphys_todynamics.F
   !> Instead of updating the state with physics tendencies from the MPAS "tend_pool", we
   !> will use tendencies from the CCPP Physics.
   !>
   !> #########################################################################################
-  subroutine ufs_physics_to_mpas()
+  subroutine ufs_physics_to_mpas(radiation)
+    use GFS_typedefs,       only : GFS_radtend_type
+    use mpas_derived_types, only : mpas_pool_type
+    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
+    use mpas_kind_types,    only : RKIND
+    use mpas_constants,     only : rv, rgas
+    ! Arguments
+    type(GFS_radtend_type), intent(in) :: radiation
+
+    ! Locals
+    type(mpas_pool_type),               pointer :: state_pool
+    type(mpas_pool_type),               pointer :: mesh_pool
+    type(mpas_pool_type),               pointer :: tend_pool
+    real(kind=RKIND), dimension(:,:),   pointer :: mass
+    real(kind=RKIND), dimension(:,:),   pointer :: theta_m
+    real(kind=RKIND), dimension(:,:,:), pointer :: scalars
+    real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
+    real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
+    real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
+    real(kind=RKIND), dimension(:,:),   pointer :: tend_theta_dyn
+    integer, pointer :: nCellsSolve, num_scalars, nVertLevels, index_qv
+    integer :: iCol,iLay
+    real(kind=RKIND):: coeff
+
+    ! Access MPAS data pools
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',  tend_pool)
+
+    ! Get MPAS dimensions
+    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
+    call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
+    call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
+    call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+
+    ! Grab fields from MPAS pools
+    call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
+    call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
+    call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
+
+    ! Allocate local variables
+    allocate(tend_th_phys(nVertLevels,nCellsSolve+1))
+    allocate(tend_theta_phys(nVertLevels,nCellsSolve+1))
+    allocate(tend_scalars_phys(num_scalars, nVertLevels,nCellsSolve+1))
+    tend_th_phys(:,:)        = 0._RKIND
+    tend_theta_phys(:,:)     = 0._RKIND
+    tend_scalars_phys(:,:,:) = 0._RKIND
+
+    ! Longwave radiation: [i, k] -> [k, i]
+    do iCol = 1, nCellsSolve
+       do iLay = 1,nVertLevels
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrlw(iCol,iLay)*mass(iLay,iCol)
+       enddo
+    enddo
+
+    ! Shortwave radiation: [i, k] -> [k, i]
+    do iCol = 1, nCellsSolve
+       do iLay = 1,nVertLevels
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrsw(iCol,iLay)*mass(iLay,iCol)
+       enddo
+    enddo
+
+    ! Convection: [i, k] -> [k, i]
+
+    ! PBL: [i, k] -> [k, i]
+
+    ! Convert from potential temperature to modified potential temperature (theta -> theta_m)
+    do iCol = 1, nCellsSolve
+       do iLay = 1, nVertLevels
+          coeff = (1. + rv/rgas * scalars(index_qv,iLay,iCol))
+          tend_th_phys(iLay,iCol) = coeff * tend_th_phys(iLay,iCol) + rv/rgas * theta_m(iLay,iCol) * tend_scalars_phys(index_qv,iLay,iCol) / coeff
+          tend_theta_phys(iLay,iCol) = tend_theta_phys(iLay,iCol) + tend_th_phys(iLay,iCol)
+       enddo
+    enddo
+
+    ! Update MPAS state tendencies
+    call mpas_pool_get_array(tend_pool, 'theta_m', tend_theta_dyn)
+    do iCol = 1, nCellsSolve
+       do iLay = 1, nVertLevels
+          tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)
+       enddo
+    enddo
+
+    ! Housekeeping
+    deallocate(tend_th_phys)
+    deallocate(tend_theta_phys)
 
   end subroutine ufs_physics_to_mpas
 
@@ -563,5 +653,44 @@ contains
     end do
     
   end subroutine ufs_mpas_grid_to_physics
-  
+
+  !> #########################################################################################
+  !> Procedure to populate MPAS diag_phys pool with CCPP data.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_phys_diag(radiation)
+    use GFS_typedefs,         only : GFS_radtend_type
+    use mpas_kind_types,      only : RKIND
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
+    ! Arguments
+    type(GFS_radtend_type), intent(in) :: radiation
+    ! Locals
+    type(mpas_pool_type), pointer :: diag_phys
+    real(RKIND),dimension(:),pointer :: swdnb,swdnbc,swupb,swupbc
+    real(RKIND),dimension(:),pointer :: lwdnb,lwdnbc,lwupb,lwupbc
+
+    ! Access MPAS data pools.
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics',  diag_phys)
+
+    call mpas_pool_get_array(diag_phys,'swdnb'     , swdnb     )
+    call mpas_pool_get_array(diag_phys,'swdnbc'    , swdnbc    )
+    call mpas_pool_get_array(diag_phys,'swupb'     , swupb     )
+    call mpas_pool_get_array(diag_phys,'swupbc'    , swupbc    )
+    call mpas_pool_get_array(diag_phys,'lwdnb'     , lwdnb     )
+    call mpas_pool_get_array(diag_phys,'lwdnbc'    , lwdnbc    )
+    call mpas_pool_get_array(diag_phys,'lwupb'     , lwupb     )
+    call mpas_pool_get_array(diag_phys,'lwupbc'    , lwupbc    )
+
+    ! SUrface fluxes
+    swdnb  = radiation%sfcfsw%dnfxc
+    swdnbc = radiation%sfcfsw%dnfx0
+    swupb  = radiation%sfcfsw%upfxc
+    swupbc = radiation%sfcfsw%upfx0
+    lwdnb  = radiation%sfcflw%dnfxc
+    lwdnbc = radiation%sfcflw%dnfx0
+    lwupb  = radiation%sfcflw%upfxc
+    lwupbc = radiation%sfcflw%upfx0
+
+  end subroutine ufs_mpas_phys_diag
 end module atmos_coupling_mod

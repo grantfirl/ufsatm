@@ -325,7 +325,7 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
-    use atmos_coupling_mod,     only : ufs_mpas_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_phys_diag
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
@@ -360,6 +360,9 @@ contains
     if (ierr/=0)  call mpp_error(FATAL, 'Call to CCPP physics step failed')
     call mpp_clock_end(physClock)
 
+    ! Populate MPAS pools with physics data.
+    call ufs_mpas_phys_diag(UFSATM_radtend)
+
   end subroutine atmos_model_radiation_physics
 
   !> #########################################################################################
@@ -374,9 +377,8 @@ contains
     type (atmos_control_type), intent(inout) :: Atmos
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas()
-    
+    call ufs_physics_to_mpas(UFSATM_radtend)
+
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock)
     
