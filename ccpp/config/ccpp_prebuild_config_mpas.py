@@ -117,11 +117,11 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_photochemistry.F90',
     'physics/physics/photochem/module_h2ophys.F90',
     'physics/physics/photochem/module_ozphys.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_pre.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_post.F90',
-    'physics/physics/MP/Thompson/mp_thompson_pre.F90',
     'physics/physics/MP/Thompson/mp_thompson.F90',
-    'physics/physics/MP/Thompson/mp_thompson_post.F90'
+    'physics/physics/MP/Thompson/mp_thompson_post.F90',
+    'physics/physics/MP/TEMPO/mp_tempo.F90',
+    'physics/physics/MP/TEMPO/mp_tempo_post.F90'
 ]
 
 # Default build dir, relative to current working directory,
