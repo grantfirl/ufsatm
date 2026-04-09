@@ -269,7 +269,9 @@ contains
 
     ! Read in physics namelist and allocate data containers.
     call MPAS_initialize(UFSATM_control, UFSATM_intdiag, UFSATM_grid, UFSATM_tbd, UFSATM_sfcprop, &
-         UFSATM_statein, UFSATM_cldprop, UFSATM_radtend, UFSATM_coupling, Cfg)
+         UFSATM_statein, UFSATM_cldprop, UFSATM_radtend, UFSATM_stateout, UFSATM_coupling, Cfg)
+    
+    call ufs_mpas_grid_to_physics(UFSATM_grid)
 
     ! Populate UFSATM data containers with MPAS "input" stream. We need to do this becuase
     ! we are calling the physics before the MPAS dynamical core.
@@ -280,9 +282,7 @@ contains
     ! and map it to the physics data containers (e.g. Typdefs). We will use a similar routine
     ! in a different "piece" later, but copying the Updated state from the dycore before calling
     ! the microphsyics.
-    !
-    call ufs_mpas_grid_to_physics(UFSATM_grid)
-    
+    !    
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
     
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
@@ -327,10 +327,16 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
-    use atmos_coupling_mod,     only : ufs_mpas_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_phys_diag
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
+    integer :: jdat(8)
+
+    ! Update physics time
+    jdat(:) = 0
+    call get_date (Atmos%Time, jdat(1), jdat(2), jdat(3), jdat(5), jdat(6), jdat(7))
+    UFSATM_control%jdat(:) = jdat(:)
 
     ! Populate physics inputs with MPAS data.
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
@@ -344,13 +350,7 @@ contains
     ! Call CCPP Radiation Group
     call mpp_clock_begin(radClock)
     if (UFSATM_control%lsswr .or. UFSATM_control%lslwr) then
-       ! DJS to GJF: If you un comment this line, you will get an error in the RRTMG radiation.
-       ! Needless to say, I didn't see why, but I assume it is due to one of the many instances
-       ! that we will need to identify as being FV3/MPAS specifc. Mostly in the Typedefs I suspect,
-       ! but there may be interstitial schemes (NOTE that I added an new MPAS specific interstital file
-       ! already, GFS_rad_time_vary.mpas.F90. I don't think it is complete.
-       ! 
-       !call CCPP_step (step="radiation", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
+       call CCPP_step (step="radiation", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
        if (ierr/=0)  call mpp_error(FATAL, 'Call to CCPP radiation step failed')
     endif
     call mpp_clock_end(radClock)
@@ -361,6 +361,9 @@ contains
     call CCPP_step (step="physics", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0)  call mpp_error(FATAL, 'Call to CCPP physics step failed')
     call mpp_clock_end(physClock)
+
+    ! Populate MPAS pools with physics data.
+    call ufs_mpas_phys_diag(UFSATM_radtend)
 
   end subroutine atmos_model_radiation_physics
 
@@ -376,9 +379,8 @@ contains
     type (atmos_control_type), intent(inout) :: Atmos
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas()
-    
+    call ufs_physics_to_mpas(UFSATM_radtend)
+
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock)
     
@@ -390,16 +392,15 @@ contains
   !> #########################################################################################
   subroutine atmos_model_microphysics(Atmos)
     use atmos_coupling_mod, only : ufs_mpas_to_microphysics, ufs_microphysics_to_mpas
+    use ufs_mpas_subdriver, only : ufs_mpas_output
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
 
     ! Prepare CCPP physics inputs with MPAS dycore outputs.
-    ! NOT YET IMPLEMENTED
     call ufs_mpas_to_microphysics(UFSATM_statein)
 
     ! Call CCPP Microphysics Group
-    ! NOT YET IMPLEMENTED in SDF
     call mpp_clock_begin(mpClock)
     call CCPP_step (step="microphysics", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0)  call mpp_error(FATAL, 'Call to CCPP microphysics step failed')
@@ -413,6 +414,10 @@ contains
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_microphysics_to_mpas(UFSATM_stateout)
+
+    ! We are at the end of the ATM timestep, output Physics and Dynamics fields using
+    ! MPAS output capabilities.
+    call ufs_mpas_output(outClock)
 
   end subroutine atmos_model_microphysics
 

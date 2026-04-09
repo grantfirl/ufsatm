@@ -37,6 +37,7 @@ module ufs_mpas_subdriver
   public :: MPAS_control_type
   public :: ufs_mpas_init
   public :: ufs_mpas_run
+  public :: ufs_mpas_output
 
   logical :: init_lbc    = .true.
   integer :: nRecord_lbc = 1
@@ -597,6 +598,7 @@ contains
 
     !
     ! Set MPAS output file times
+    ! (DJS: This should be moved to somewhere in initialization)
     !
     if (.not. allocated(mpas_output_times)) then
        allocate(mpas_output_times(size(output_fh)))
@@ -609,9 +611,8 @@ contains
           end if
        enddo
        ! Also, write IC state to history file while we're here.
-       call ufs_mpas_write("output", timeStamp)
-       ! Start output file counter
-       out_file_index = 2
+       out_file_index = 1
+       call ufs_mpas_output(outClock, .true.)
     endif
 
     !
@@ -627,8 +628,6 @@ contains
           return
        end if
        init_lbc = .false.
-       ! Also, write IC state to history file while we're here.
-       call ufs_mpas_write("output", timeStamp)
     end if
 
     ! During integration, time level 1 stores the model state at the beginning of the
@@ -695,22 +694,48 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)
     call atm_compute_output_diagnostics(state, 1, diag, mesh)
 
-    !
-    ! Write any output streams
-    !
-    call mpp_clock_begin(outClock)
-    call mpas_get_time(curr_time=timeStop, dateTimeString=timeStamp, ierr=ierr)
-    if ( ierr /= 0 ) then
-       call mpp_error(FATAL,subname//': Failed to get time timeStop"')
-    end if
-
-    if (timeStop .EQ. mpas_output_times(out_file_index)) then
-       call ufs_mpas_write("output", timeStamp)
-       out_file_index = out_file_index + 1
-    end if
-    call mpp_clock_end(outClock)
-
   end subroutine ufs_mpas_run
+
+  !> #########################################################################################
+  !> Routine to write physics (CCPP) AND dynamics (MPAS) output using MPAS native output.
+  !>
+  !> Called from atmos_model.F90:atmos_model_microphysics(), which is the end of the P2D step.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_output(outClock, write_at_ic_time)
+    use mpas_derived_types,   only : mpas_Time_type
+    use mpas_kind_types,      only : StrKIND
+    use mpas_timekeeping,     only : mpas_get_clock_time, mpas_NOW, mpas_get_time, operator(.EQ.)
+    use mpp_mod,              only : FATAL, mpp_error
+    use mpp_mod,              only : mpp_clock_begin, mpp_clock_end
+
+    integer, intent(inout) :: outClock
+    logical, intent(in), optional :: write_at_ic_time
+    character(len=StrKIND) :: timeStamp
+    type (mpas_Time_type)  :: timeNow
+    integer :: ierr
+    character(len=*), parameter :: subname = 'ufs_mpas_output::ufs_mpas_output'
+
+    ! Get forecast time
+    timeNow  = mpas_get_clock_time(clock, mpas_NOW, ierr=ierr)
+    if (ierr /= 0) then
+       call mpp_error(FATAL,subname//': Failed to get clock_time for "mpas_NOW"')
+    endif
+
+    call mpas_get_time(curr_time=timeNow, dateTimeString=timeStamp, ierr=ierr)
+    if (ierr /= 0) then
+       call mpp_error(FATAL,subname//': Failed to get clock_time for "mpas_NOW"')
+    endif
+
+    ! Are we at requested output time? If so, write output stream
+    if ((timeNow .EQ. mpas_output_times(out_file_index)) .or. (present(write_at_ic_time))) then
+       call mpp_clock_begin(outClock)
+       call ufs_mpas_write("output+diag_phys", timeStamp)
+       call mpp_clock_end(outClock)
+       out_file_index = out_file_index + 1
+    endif
+
+  end subroutine ufs_mpas_output
 
   !> #########################################################################################
   !> Procedure to read MPAS namelist(s).

@@ -7,7 +7,7 @@ module MPAS_init
   use ufs_mpas_subdriver, only : MPAS_control_type
   use GFS_typedefs,       only : GFS_control_type, GFS_diag_type, GFS_grid_type, GFS_tbd_type
   use GFS_typedefs,       only : GFS_sfcprop_type, GFS_statein_type, GFS_cldprop_type
-  use GFS_typedefs,       only : GFS_radtend_type
+  use GFS_typedefs,       only : GFS_radtend_type, GFS_stateout_type
   use GFS_typedefs,       only : GFS_coupling_type
 
   implicit none
@@ -20,7 +20,7 @@ contains
   !>
   !> #########################################################################################
   subroutine MPAS_initialize (Model, Diag, Grid, Tbd, SfcProp, Statein, CldProp, RadTend,    &
-                              Coupling, Init_parm)
+                              StateOut, Coupling, Init_parm)
 #ifdef _OPENMP
     use omp_lib
 #endif
@@ -32,6 +32,7 @@ contains
     type(GFS_tbd_type),          intent(inout) :: Tbd
     type(GFS_sfcprop_type),      intent(inout) :: SfcProp
     type(GFS_statein_type),      intent(inout) :: Statein
+    type(GFS_stateout_type),     intent(inout) :: Stateout
     type(GFS_cldprop_type),      intent(inout) :: Cldprop
     type(GFS_radtend_type),      intent(inout) :: Radtend
     type(GFS_coupling_type),     intent(inout) :: Coupling
@@ -68,6 +69,7 @@ contains
     call Tbd%create(Model)
     call SfcProp%create(Model)
     call Statein%create(Model)
+    call Stateout%create(Model)
     call Cldprop%create(Model)
     call Radtend%create(Model)
     call Coupling%create(Model)
