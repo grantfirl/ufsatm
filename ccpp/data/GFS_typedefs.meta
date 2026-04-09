@@ -2868,7 +2868,7 @@
   dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
-  active = (flag_for_surface_flux_coupling .or. flag_for_chemistry_coupling .or. flag_for_ocean_wave_coupling)
+  active = (flag_for_surface_flux_coupling .or. flag_for_chemistry_coupling .or. flag_for_ocean_wave_coupling .or. do_fire_coupling)
 [v10mi_cpl]
   standard_name = y_wind_at_10m_for_coupling
   long_name = instantaneous V10m
@@ -2876,7 +2876,7 @@
   dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
-  active = (flag_for_surface_flux_coupling .or. flag_for_chemistry_coupling .or. flag_for_ocean_wave_coupling)
+  active = (flag_for_surface_flux_coupling .or. flag_for_chemistry_coupling .or. flag_for_ocean_wave_coupling .or. do_fire_coupling)
 [tsfci_cpl]
   standard_name = surface_skin_temperature_for_coupling
   long_name = instantaneous sfc temperature
@@ -3420,6 +3420,46 @@
   type = real
   kind = kind_phys
   active = (flag_for_rrtmgp_radiation_scheme)
+[tsfco_dat]
+  standard_name = sea_surface_temperature_from_data
+  long_name = sfc temperature
+  units = K
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[mask_dat]
+  standard_name = land_sea_mask_from_data 
+  long_name = landmask
+  units = flag
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[tice_dat]
+  standard_name = surface_skin_temperature_over_ice_from_data
+  long_name = surface skin temperature over ice
+  units = K
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[hice_dat]
+  standard_name = sea_ice_thickness_from_data
+  long_name = sea-ice thickness
+  units = m
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
+[fice_dat]
+  standard_name = sea_ice_area_fraction_of_sea_area_fraction_from_data
+  long_name = sea-ice concentration [0,1]
+  units = frac
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+  active = (do_cdeps_inline)
 
 ########################################################################
 [ccpp-table-properties]
@@ -3820,6 +3860,12 @@
 [use_med_flux]
   standard_name = do_mediator_atmosphere_ocean_fluxes
   long_name = flag for using atmosphere-ocean fluxes form mediator (default false)
+  units = flag
+  dimensions = ()
+  type = logical
+[use_cdeps_inline]
+  standard_name = do_cdeps_inline
+  long_name = flag for using data provided by CDEPS inline (default false)
   units = flag
   dimensions = ()
   type = logical
@@ -4500,18 +4546,6 @@
   units = flag
   dimensions = ()
   type = integer
-[imp_physics_zhao_carr]
-  standard_name = identifier_for_zhao_carr_microphysics_scheme
-  long_name = choice of Zhao-Carr microphysics scheme
-  units = flag
-  dimensions = ()
-  type = integer
-[imp_physics_zhao_carr_pdf]
-  standard_name = identifier_for_zhao_carr_pdf_microphysics_scheme
-  long_name = choice of Zhao-Carr microphysics scheme with PDF clouds
-  units = flag
-  dimensions = ()
-  type = integer
 [imp_physics_mg]
   standard_name = identifier_for_morrison_gettelman_microphysics_scheme
   long_name = choice of Morrison-Gettelman microphysics scheme
@@ -5138,6 +5172,20 @@
   standard_name = multiplicative_tuning_parameter_for_microphysical_sedimentation_minimum_threshold
   long_name = multiplicative tuning parameter for microphysical sedimentation minimum threshold
   units = 1
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[fs_fac_rain]
+  standard_name = multiplicative_tuning_parameter_for_rain_fall_speed
+  long_name = multiplicative tuning parameter for rain fall speed
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[fs_fac_snow]
+  standard_name = multiplicative_tuning_parameter_for_snow_fall_speed
+  long_name = multiplicative tuning parameter_for snow fall speed
+  units = none
   dimensions = ()
   type = real
   kind = kind_phys
@@ -6153,6 +6201,13 @@
   dimensions = ()
   type = real
   kind = kind_phys
+[cat_adj_deep]
+  standard_name = adjustment_for_convective_advection_time_for_deep
+  long_name = adjustment for convective advection time for deep
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
 [clam_shal]
   standard_name = entrainment_rate_coefficient_for_shallow_convection
   long_name = entrainment rate coefficient for shallow convection
@@ -6184,6 +6239,13 @@
 [asolfac_shal]
   standard_name = aerosol_aware_multiplicative_rain_conversion_parameter_for_shallow_convection
   long_name = aerosol-aware parameter inversely proportional to CCN number concentraion from Lim (2011) for shallow convection
+  units = none
+  dimensions = ()
+  type = real
+  kind = kind_phys
+[cat_adj_shal]
+  standard_name = adjustment_for_convective_advection_time_for_shallow
+  long_name = adjustment for convective advection time for shallow
   units = none
   dimensions = ()
   type = real
@@ -6750,6 +6812,29 @@
   units = index
   dimensions = ()
   type = integer
+### IVAI
+[ntno2]
+  standard_name = index_for_no2_chemical_tracer_in_tracer_concentration_array
+  long_name = tracer index for coupled AQM/CMAQ NO2 chemical tracer
+  units = index
+  dimensions = ()
+  type = integer
+##  active = (flag_for_air_quality_coupling .and. flag_for_canopy_option)
+[ntno]
+  standard_name = index_for_no_chemical_tracer_in_tracer_concentration_array
+  long_name = tracer index for coupled AQM/CMAQ NO chemical tracer
+  units = index
+  dimensions = ()
+  type = integer
+##  active = (flag_for_air_quality_coupling .and. flag_for_canopy_option)
+[nto3]
+  standard_name = index_for_ozone_chemical_tracer_in_tracer_concentration_array
+  long_name = tracer index for coupled AQM/CMAQ ozone chemical tracer
+  units = index
+  dimensions = ()
+  type = integer
+##  active = (flag_for_air_quality_coupling .and. flag_for_canopy_option)
+### IVAI
 [ntcw]
   standard_name = index_of_cloud_liquid_water_mixing_ratio_in_tracer_concentration_array
   long_name = tracer index for cloud condensate (or liquid water)
@@ -9842,6 +9927,22 @@
   dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
+[dkt_can]
+  standard_name = atmosphere_heat_diffusivity_in_canopy
+  long_name = atmospheric heat diffusivity in canopy
+  units = m2 s-1
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
+  active = (flag_for_air_quality_coupling .and. flag_for_canopy_option)
+[dku_can]
+  standard_name = atmosphere_momentum_diffusivity_in_canopy
+  long_name = atmospheric momentum diffusivity in canopy
+  units = m2 s-1
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
+  active = (flag_for_air_quality_coupling .and. flag_for_canopy_option)
 [cldfra]
   standard_name = instantaneous_3d_cloud_fraction
   long_name = instantaneous 3D cloud fraction for all MPs

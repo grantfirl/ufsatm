@@ -28,8 +28,6 @@ module atmos_model_mod
   use time_manager_mod,      only : time_type, get_time, get_date, operator(+), operator(-)
   use field_manager_mod,     only : MODEL_ATMOS
   use tracer_manager_mod,    only : get_number_tracers, get_tracer_names, get_tracer_index
-  use fms_mod,               only : check_nml_error
-  use fms2_io_mod,           only : file_exists
   use mpp_mod,               only : input_nml_file, mpp_error, FATAL
   use mpp_mod,               only : mpp_pe, mpp_root_pe, mpp_clock_id, mpp_clock_begin
   use mpp_mod,               only : mpp_clock_end, CLOCK_COMPONENT, MPP_CLOCK_SYNC
@@ -83,7 +81,7 @@ module atmos_model_mod
        regional
 
   ! Component Timers
-  integer :: setupClock, radClock, physClock, mpasClock, mpClock, atmiClock
+  integer :: setupClock, radClock, physClock, mpasClock, mpClock, atmiClock, outClock
 
   ! DJS2025: For UFS WM RTs unitl output is setup for MPAS.
   integer, parameter :: mpas_logfile_handle = 42323
@@ -105,12 +103,12 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_init(Atmos, Time_init, Time, Time_end, Time_step, mpicomm, calendar)
-    use ufs_mpas_subdriver, only : MPAS_control_type
-    use ufs_mpas_subdriver, only : ufs_mpas_init
-    use ufs_mpas_subdriver, only : ufs_mpas_open_init, ufs_mpas_open_lbc
-    use ufs_mpas_module,    only : constituent_name, is_water_species
-    use atmos_coupling_mod, only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
-    use MPAS_init,          only : MPAS_initialize
+    use ufs_mpas_subdriver,     only : MPAS_control_type
+    use ufs_mpas_subdriver,     only : ufs_mpas_init
+    use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc
+    use ufs_mpas_constituents,  only : constituent_name, is_water_species
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
+    use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
     type(atmos_control_type), intent(inout) :: Atmos
@@ -122,6 +120,7 @@ contains
     integer :: i, io, ierr, nConstituents, sec, iCol
     type(MPAS_control_type) :: Cfg
     integer :: times(6), timee(6), ttime, logUnits(2), nthrds
+    logical :: file_exists
     
     ! Set up timers
     setupClock = mpp_clock_id( 'Time-Step Setup       ', flags=clock_flag_default, grain=CLOCK_COMPONENT )
@@ -130,6 +129,7 @@ contains
     physClock  = mpp_clock_id( 'Physics               ', flags=clock_flag_default, grain=CLOCK_COMPONENT )
     mpasClock  = mpp_clock_id( 'MPAS Dycore           ', flags=clock_flag_default, grain=CLOCK_COMPONENT )
     mpClock    = mpp_clock_id( 'Microphysics          ', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    outClock   = mpp_clock_id( 'MPAS Output           ', flags=clock_flag_default, grain=CLOCK_COMPONENT )
 
     ! Start timer for this procedure (init).
     call mpp_clock_begin(atmiClock)
@@ -154,9 +154,10 @@ contains
     Cfg%mpi_comm  = mpicomm
     
     ! Read in ATMosphere namelist.
-    if (file_exists('input.nml')) then
-       read(input_nml_file, nml=atmos_model_nml, iostat=io)
-       ierr = check_nml_error(io, 'atmos_model_nml')
+    inquire(file = 'input.nml', exist=file_exists)
+    if (file_exists) then
+       read(input_nml_file, nml=atmos_model_nml, iostat=ierr)
+       if (ierr/=0)  call mpp_error(FATAL, 'ERROR When Reading in ATM Namelist')
     endif
 
     !
@@ -284,7 +285,7 @@ contains
     
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
     
-    call ufs_mpas_to_physics(UFSATM_statein)
+    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
 
     ! Initialize the CCPP framework
     call CCPP_step (step="init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
@@ -326,9 +327,13 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
+
+    ! Populate physics inputs with MPAS data.
+    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
 
     ! Call CCPP Timestep_initialize Group
     call mpp_clock_begin(setupClock)
@@ -365,19 +370,17 @@ contains
   !> #########################################################################################
   subroutine atmos_model_dynamics(Atmos)
     use ufs_mpas_subdriver, only : ufs_mpas_run
-    use atmos_coupling_mod, only : ufs_microphysics_to_mpas
+    use atmos_coupling_mod, only : ufs_physics_to_mpas
     use MPAS_init,          only : MPAS_initialize
     
     type (atmos_control_type), intent(inout) :: Atmos
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     ! NOT YET IMPLEMENTED
-    call ufs_microphysics_to_mpas(UFSATM_stateout)
+    call ufs_physics_to_mpas()
     
     ! Call MPAS dycore
-    call mpp_clock_begin(mpasClock)
-    call ufs_mpas_run()
-    call mpp_clock_end(mpasClock)
+    call ufs_mpas_run(mpasClock, outClock)
     
   end subroutine atmos_model_dynamics
 
@@ -386,7 +389,7 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_microphysics(Atmos)
-    use atmos_coupling_mod, only : ufs_mpas_to_microphysics
+    use atmos_coupling_mod, only : ufs_mpas_to_microphysics, ufs_microphysics_to_mpas
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
@@ -408,6 +411,9 @@ contains
     if (ierr/=0)  call mpp_error(FATAL, 'Call to CCPP timestep_finalize step failed')
     call mpp_clock_end(setupClock)
 
+    ! Prepare MPAS dycore inputs with CCPP physics outputs.
+    call ufs_microphysics_to_mpas(UFSATM_stateout)
+
   end subroutine atmos_model_microphysics
 
   !> #########################################################################################
@@ -420,5 +426,5 @@ contains
     ! Advance time
     Atmos % Time = Atmos % Time + Atmos % Time_step
   end subroutine update_atmos_model_state
-  
+
 end module atmos_model_mod
