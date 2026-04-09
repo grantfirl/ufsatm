@@ -685,13 +685,13 @@ contains
     end do
  
   end subroutine ufs_mpas_grid_to_physics
-<<<<<<< HEAD
   
   subroutine ufs_mpas_sfc_to_physics(physics_sfcprop)
     use GFS_typedefs,         only : GFS_sfcprop_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
-    
+    use mpas_kind_types,      only : RKIND
+
     ! Arguments
     type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
     ! Locals
@@ -705,12 +705,12 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
     
     ! Get MPAS dimensions
-    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)vvcccbnvlbveetjfnufggrubvnkfhrelgtbbnvlucgkr
+    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     
     !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
-    call mpas_pool_get_array(mesh,      'landmask',  landmask)
+    call mpas_pool_get_array(mesh_pool, 'landmask',  landmask)
     call mpas_pool_get_array(sfc_input, 'sst',       sst)
-    call mpas_pool_get_array(sfc_input, 'snow',      sno)
+    call mpas_pool_get_array(sfc_input, 'snow',      snow)
     call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)
     call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
     
@@ -729,8 +729,6 @@ contains
     
   end subroutine ufs_mpas_sfc_to_physics
   
-=======
-
   !> #########################################################################################
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
@@ -782,5 +780,4 @@ contains
     end do
 
   end subroutine ufs_mpas_phys_diag
->>>>>>> feature/phys2dyn
 end module atmos_coupling_mod
