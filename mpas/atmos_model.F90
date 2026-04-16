@@ -379,7 +379,7 @@ contains
     type (atmos_control_type), intent(inout) :: Atmos
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_physics_to_mpas(UFSATM_radtend)
+    call ufs_physics_to_mpas(UFSATM_radtend, UFSATM_statein)
 
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock)
@@ -398,7 +398,7 @@ contains
     integer :: ierr
 
     ! Prepare CCPP physics inputs with MPAS dycore outputs.
-    call ufs_mpas_to_microphysics(UFSATM_statein)
+    call ufs_mpas_to_microphysics(UFSATM_stateout) !GJF - changed to stateout because it contains the current state
 
     ! Call CCPP Microphysics Group
     call mpp_clock_begin(mpClock)

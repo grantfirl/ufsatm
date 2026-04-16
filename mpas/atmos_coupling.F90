@@ -293,27 +293,32 @@ contains
   !> will use tendencies from the CCPP Physics.
   !>
   !> #########################################################################################
-  subroutine ufs_physics_to_mpas(radiation)
-    use GFS_typedefs,       only : GFS_radtend_type
+  subroutine ufs_physics_to_mpas(statein, interstitial)
+    use GFS_typedefs,       only : GFS_interstitial_type, GFS_statein_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use mpas_kind_types,    only : RKIND
     use mpas_constants,     only : rv, rgas
     ! Arguments
-    type(GFS_radtend_type), intent(in) :: radiation
+    type(GFS_interstitial_type), intent(in) :: interstitial
+    type(GFS_statein_type), intent(in) :: statein
 
     ! Locals
     type(mpas_pool_type),               pointer :: state_pool
     type(mpas_pool_type),               pointer :: mesh_pool
     type(mpas_pool_type),               pointer :: tend_pool
     real(kind=RKIND), dimension(:,:),   pointer :: mass
+    real(kind=RKIND), dimension(:,:),   pointer :: exner
     real(kind=RKIND), dimension(:,:),   pointer :: theta_m
     real(kind=RKIND), dimension(:,:,:), pointer :: scalars
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
     real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
     real(kind=RKIND), dimension(:,:),   pointer :: tend_theta_dyn
-    integer, pointer :: nCellsSolve, num_scalars, nVertLevels, index_qv
+    real(kind=RKIND), dimension(:,:,:), pointer :: tend_scalars_dyn
+    integer, pointer :: nCellsSolve, num_scalars, nVertLevels, 
+    integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
+    integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol,iLay,ithread
     real(kind=RKIND):: coeff
@@ -333,11 +338,21 @@ contains
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
-
+    call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
+    call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
+    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
+    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
+    call mpas_pool_get_dimension(state_pool, 'index_nc',    index_nc)
+    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
+    call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
+    call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
+    
     ! Grab fields from MPAS pools
     call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
     call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
     call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
+    call mpas_pool_get_array(state_pool,'exner'  ,exner,2   )
 
     ! Allocate local variables
     allocate(tend_th_phys(nVertLevels,nCellsSolve+1))
@@ -346,24 +361,135 @@ contains
     tend_th_phys(:,:)        = 0._RKIND
     tend_theta_phys(:,:)     = 0._RKIND
     tend_scalars_phys(:,:,:) = 0._RKIND
-
-    ! Longwave radiation: [i, k] -> [k, i]
+    
+    ! GJF: Add microphysics heating (from last timestep) to tend_th_phys
+    
+    ! GJF: Add accumulated tendencies from the physics group
+    
     do ithread = 1,nThreads
-       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels
-             tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrlw(iCol,iLay)*mass(iLay,iCol)
-          end do
-       end do
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        do iLay = 1,nVertLevels
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial%dtdt(iCol,iLay)/statein%exner(iCol,iLay))*mass(iLay,iCol)
+        end do
+      end do  
     end do
+    
+    do ithread = 1,nThreads
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        do iLay = 1, nVertLevels
+          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+        enddo
+      enddo
+    enddo
+    
+    if(index_qc .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_qi .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_qr .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_qs .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_qg .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_nc .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_ni .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_nifa .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    if(index_nwfa .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+    
+    
+    ! Longwave radiation: [i, k] -> [k, i]
+    ! do ithread = 1,nThreads
+    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+    !       do iLay = 1,nVertLevels
+    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrlw(iCol,iLay)*mass(iLay,iCol)
+    !       end do
+    !    end do
+    ! end do
 
     ! Shortwave radiation: [i, k] -> [k, i]
-    do ithread = 1,nThreads
-       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels
-             tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrsw(iCol,iLay)*mass(iLay,iCol)
-          end do
-       end do
-    end do
+    ! do ithread = 1,nThreads
+    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+    !       do iLay = 1,nVertLevels
+    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrsw(iCol,iLay)*mass(iLay,iCol)
+    !       end do
+    !    end do
+    ! end do
 
     ! Convection: [i, k] -> [k, i]
 
@@ -385,7 +511,18 @@ contains
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-             tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)
+               tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)
+          end do
+       end do
+    end do
+    
+    call mpas_pool_get_array(tend_pool, 'scalars_tend', tend_scalars_dyn)
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+             do iScalar = 1, num_scalars
+               tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalar_phys(iScalar,iLay,iCol)
+             end do
           end do
        end do
     end do
@@ -393,6 +530,7 @@ contains
     ! Housekeeping
     deallocate(tend_th_phys)
     deallocate(tend_theta_phys)
+    deallocate(tend_scalars_phys)
 
   end subroutine ufs_physics_to_mpas
 
@@ -446,7 +584,11 @@ contains
     call mpas_pool_get_array(diag_pool,  'pressure_base',          MPAS_state % pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
-
+    
+    !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
+    ! update the state variables here. Also, we need to save the microphysics heating rate to be applied (again?)
+    ! before
+    
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
 
@@ -483,10 +625,14 @@ contains
   !>
   !> #########################################################################################
   subroutine ufs_mpas_to_microphysics(physics_state)
-    use GFS_typedefs,         only : GFS_statein_type
+    use GFS_typedefs,         only : GFS_stateout_type
     ! Arguments
-    type(GFS_statein_type),   intent(inout) :: physics_state
- 
+    type(GFS_stateout_type),   intent(inout) :: physics_state
+    
+    !GJF: grab updated state, put it in GFSstateout
+    
+    !GJF: remove microphysics heating from state before calling microphysics
+    
   end subroutine ufs_mpas_to_microphysics
 
   !> #########################################################################################
