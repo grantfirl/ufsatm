@@ -413,7 +413,7 @@ contains
     call mpp_clock_end(setupClock)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_microphysics_to_mpas(UFSATM_stateout)
+    call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_interstitial)
 
     ! We are at the end of the ATM timestep, output Physics and Dynamics fields using
     ! MPAS output capabilities.
