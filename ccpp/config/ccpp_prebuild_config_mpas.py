@@ -115,6 +115,7 @@ SCHEME_FILES = [
     'physics/physics/Radiation/RRTMGP/rrtmgp_lw_main.F90',
     'physics/physics/Radiation/RRTMGP/rrtmgp_sw_main.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_photochemistry.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_photochemistry_post.F90',
     'physics/physics/photochem/module_h2ophys.F90',
     'physics/physics/photochem/module_ozphys.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_post.F90',
