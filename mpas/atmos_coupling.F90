@@ -194,6 +194,8 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state',     state_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',      diag_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
+
+    ! DJS to GFS: Sanity check to ensure data is in "sfc_pool" to pass to physics types.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_pool)
     call mpas_pool_get_array(sfc_pool, 'isltyp', isltyp, 1)
 
@@ -254,6 +256,22 @@ contains
                                                 MPAS_state % pressure_b(1,iCol)
        end do
     end do
+
+    ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
+    ! (from mpas_atmphys_interface.F:MPAS_to_physics())
+    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
+    do iCol = 1, nCellsSolve
+       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
+       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
+       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
+       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
+       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
+            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
+       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
+                                             MPAS_state % pressure_p(1,iCol) + &
+                                             MPAS_state % pressure_b(1,iCol)
+    enddo
+
 
     ! Compute hydrostatic pressures
     allocate(MPAS_state % pmid(   nVertLevels,   nCellsSolve))
@@ -532,7 +550,45 @@ contains
     deallocate(tend_theta_phys)
     deallocate(tend_scalars_phys)
 
-  end subroutine ufs_physics_to_mpas
+    ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
+    ! (from mpas_atmphys_interface.F:MPAS_to_physics())
+    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
+    do iCol = 1, nCellsSolve
+       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
+       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
+       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
+       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
+       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
+            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
+       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
+                                             MPAS_state % pressure_p(1,iCol) + &
+                                             MPAS_state % pressure_b(1,iCol)
+    enddo
+
+    ! Housekeeping
+    nullify (state_pool)
+    nullify (mesh_pool)
+    nullify (diag_pool)
+
+  end subroutine ufs_microphysics_to_mpas
+
+  !> #########################################################################################
+  !> Procedure to convert of "MPAS" variables to "CCPP" variables.
+  !> Called prior to CCPP Microphysics Group.
+  !> 
+  !> Analogous to microphysics_from_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
+  !>
+  !> This procedure accesses MPAS data using MPAS native procedures and stores the data
+  !> locally in the data-containers defined above. The MPAS "state" is then translated to the
+  !> CCPP "state" needed by the microphysics.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_to_microphysics(physics_state)
+    use GFS_typedefs,         only : GFS_statein_type
+    ! Arguments
+    type(GFS_statein_type),   intent(inout) :: physics_state
+ 
+  end subroutine ufs_mpas_to_microphysics
 
   !> #########################################################################################
   !> Procedure to convert of output "CCPP" variables to "MPAS" variables
