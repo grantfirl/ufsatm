@@ -11,8 +11,9 @@ module atmos_coupling_mod
   public :: MPAS_statein_type
   public :: MPAS_stateout_type
   public :: ufs_mpas_to_physics
-  public :: ufs_microphysics_to_mpas
+  public :: ufs_physics_to_mpas
   public :: ufs_mpas_to_microphysics
+  public :: ufs_microphysics_to_mpas
   public :: ufs_mpas_grid_to_physics
   public :: ufs_mpas_sfc_to_physics
   public :: ufs_mpas_phys_diag
@@ -257,22 +258,6 @@ contains
        end do
     end do
 
-    ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
-    ! (from mpas_atmphys_interface.F:MPAS_to_physics())
-    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
-    do iCol = 1, nCellsSolve
-       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
-       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
-       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
-       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
-       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
-            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
-       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
-                                             MPAS_state % pressure_p(1,iCol) + &
-                                             MPAS_state % pressure_b(1,iCol)
-    enddo
-
-
     ! Compute hydrostatic pressures
     allocate(MPAS_state % pmid(   nVertLevels,   nCellsSolve))
     allocate(MPAS_state % pmiddry(nVertLevels,   nCellsSolve))
@@ -312,7 +297,8 @@ contains
   !>
   !> #########################################################################################
   subroutine ufs_physics_to_mpas(statein, interstitial)
-    use GFS_typedefs,       only : GFS_interstitial_type, GFS_statein_type
+    use GFS_typedefs,       only : GFS_statein_type
+    use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use mpas_kind_types,    only : RKIND
@@ -325,16 +311,22 @@ contains
     type(mpas_pool_type),               pointer :: state_pool
     type(mpas_pool_type),               pointer :: mesh_pool
     type(mpas_pool_type),               pointer :: tend_pool
+    type(mpas_pool_type),               pointer :: diag_pool
     real(kind=RKIND), dimension(:,:),   pointer :: mass
     real(kind=RKIND), dimension(:,:),   pointer :: exner
     real(kind=RKIND), dimension(:,:),   pointer :: theta_m
     real(kind=RKIND), dimension(:,:,:), pointer :: scalars
+    real(kind=RKIND), dimension(:),     pointer :: surface_pressure
+    real(kind=RKIND), dimension(:,:),   pointer :: zgrid
+    real(kind=RKIND), dimension(:,:),   pointer :: zz
+    real(kind=RKIND), dimension(:),     pointer :: pressure_b
+    real(kind=RKIND), dimension(:),     pointer :: pressure_p
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
     real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
     real(kind=RKIND), dimension(:,:),   pointer :: tend_theta_dyn
     real(kind=RKIND), dimension(:,:,:), pointer :: tend_scalars_dyn
-    integer, pointer :: nCellsSolve, num_scalars, nVertLevels, 
+    integer, pointer :: nCellsSolve, num_scalars, nVertLevels 
     integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
     integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
@@ -350,6 +342,7 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',  tend_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag_pool)
 
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
@@ -370,7 +363,13 @@ contains
     call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
     call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
     call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
-    call mpas_pool_get_array(state_pool,'exner'  ,exner,2   )
+    call mpas_pool_get_array(state_pool,'exner'   ,exner,2  )
+    call mpas_pool_get_array(mesh_pool, 'zz'      ,zz)
+    call mpas_pool_get_array(diag_pool, 'surface_pressure', surface_pressure)
+    call mpas_pool_get_array(mesh_pool, 'zgrid',            zgrid)
+    call mpas_pool_get_array(diag_pool, 'pressure_base',    pressure_b)
+    call mpas_pool_get_array(diag_pool, 'pressure_p',       pressure_p)
+
 
     ! Allocate local variables
     allocate(tend_th_phys(nVertLevels,nCellsSolve+1))
@@ -552,17 +551,15 @@ contains
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
-    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
     do iCol = 1, nCellsSolve
-       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
-       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
-       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
-       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
-       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
+       tem1 = zgrid(2,iCol) - zgrid(1,iCol)
+       tem2 = zgrid(3,iCol) - zgrid(2,iCol)
+       rho1 = mass(1,iCol) * zz(1,iCol) * (1. + scalars(index_qv,1,iCol))
+       rho2 = mass(2,iCol) * zz(2,iCol) * (1. + scalars(index_qv,2,iCol))
+       surface_pressure(iCol) = 0.5*gravity*( zgrid(2,iCol) -  zgrid(1,iCol)) &
             * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
-       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
-                                             MPAS_state % pressure_p(1,iCol) + &
-                                             MPAS_state % pressure_b(1,iCol)
+       surface_pressure(iCol) = surface_pressure(iCol) + pressure_p(1,iCol) + &
+                                pressure_b(1,iCol)
     enddo
 
     ! Housekeeping
@@ -570,25 +567,7 @@ contains
     nullify (mesh_pool)
     nullify (diag_pool)
 
-  end subroutine ufs_microphysics_to_mpas
-
-  !> #########################################################################################
-  !> Procedure to convert of "MPAS" variables to "CCPP" variables.
-  !> Called prior to CCPP Microphysics Group.
-  !> 
-  !> Analogous to microphysics_from_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
-  !>
-  !> This procedure accesses MPAS data using MPAS native procedures and stores the data
-  !> locally in the data-containers defined above. The MPAS "state" is then translated to the
-  !> CCPP "state" needed by the microphysics.
-  !>
-  !> #########################################################################################
-  subroutine ufs_mpas_to_microphysics(physics_state)
-    use GFS_typedefs,         only : GFS_statein_type
-    ! Arguments
-    type(GFS_statein_type),   intent(inout) :: physics_state
- 
-  end subroutine ufs_mpas_to_microphysics
+  end subroutine ufs_physics_to_mpas
 
   !> #########################################################################################
   !> Procedure to convert of output "CCPP" variables to "MPAS" variables
@@ -600,7 +579,8 @@ contains
   !>
   !> #########################################################################################
   subroutine ufs_microphysics_to_mpas(physics_state, interstial)
-    use GFS_typedefs,       only : GFS_stateout_type, GFS_interstitial_type
+    use GFS_typedefs,       only : GFS_stateout_type
+    use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension, mpas_pool_get_config
     use mpas_constants,     only : gravity, Rv_over_Rd => rvord 
