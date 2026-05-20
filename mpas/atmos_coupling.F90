@@ -302,7 +302,7 @@ contains
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use mpas_kind_types,    only : RKIND
-    use mpas_constants,     only : rv, rgas
+    use mpas_constants,     only : rv, rgas, gravity
     ! Arguments
     type(GFS_interstitial_type), intent(in) :: interstitial
     type(GFS_statein_type), intent(in) :: statein
@@ -319,8 +319,8 @@ contains
     real(kind=RKIND), dimension(:),     pointer :: surface_pressure
     real(kind=RKIND), dimension(:,:),   pointer :: zgrid
     real(kind=RKIND), dimension(:,:),   pointer :: zz
-    real(kind=RKIND), dimension(:),     pointer :: pressure_b
-    real(kind=RKIND), dimension(:),     pointer :: pressure_p
+    real(kind=RKIND), dimension(:,:),     pointer :: pressure_b
+    real(kind=RKIND), dimension(:,:),     pointer :: pressure_p
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
     real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
@@ -330,8 +330,8 @@ contains
     integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
     integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    integer :: iCol,iLay,ithread
-    real(kind=RKIND):: coeff
+    integer :: iCol,iLay,ithread,iScalar
+    real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
 
     ! Get openMP information
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
@@ -386,7 +386,7 @@ contains
     do ithread = 1,nThreads
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial%dtdt(iCol,iLay)/statein%exner(iCol,iLay))*mass(iLay,iCol)
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
         end do
       end do  
     end do
@@ -583,21 +583,21 @@ contains
     use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension, mpas_pool_get_config
-    use mpas_constants,     only : gravity, Rv_over_Rd => rvord 
+    use mpas_constants,     only : gravity, rvord 
     use mpas_kind_types,    only : RKIND
 
     ! Arguments
     type(GFS_stateout_type),     intent(in   ) :: physics_state
-    type(GFS_interstitial_type), intent(in.  ) :: interstitial
+    type(GFS_interstitial_type), intent(in   ) :: interstitial
     ! Locals
     type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: diag_pool
     type(mpas_pool_type), pointer :: mesh_pool
     type(mpas_pool_type), pointer :: state_pool
     type(mpas_pool_type), pointer :: tend_pool
-    integer, pointer :: nCellsSolve, index_qv
-    integer :: iCol, ithread
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2
+    integer, pointer :: nCellsSolve, index_qv, num_scalars, nVertLevels
+    integer :: iCol, ithread, iLay, iTracer
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), dimension(:,:), pointer :: rt_diabatic_tend
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
@@ -618,6 +618,8 @@ contains
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+    call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
+    call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
     ! Grab fields from MPAS pools
     call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=2)

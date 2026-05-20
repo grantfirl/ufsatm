@@ -506,10 +506,9 @@ contains
     end if
     call mpas_log_write('Setting simulation start time :'//startTimeStamp)
 
-    !
     call exchange_halo_group(domain_ptr, 'initialization:u',ierr=ierr)
     if ( ierr /= 0 ) then
-       call mpp_error(FATAL,subname//'Failed to exchange halo layers for group "initialization:u"')
+       call mpas_log_write(subname // ' Failed to exchange halo layers for group "initialization:u"',messageType=MPAS_LOG_CRIT)
     end if
 
     !
