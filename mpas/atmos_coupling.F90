@@ -304,7 +304,7 @@ contains
     use mpas_kind_types,    only : RKIND
     use mpas_constants,     only : rv, rgas, gravity
     ! Arguments
-    type(GFS_interstitial_type), intent(in) :: interstitial
+    type(GFS_interstitial_type), intent(in) :: interstitial(:)
     type(GFS_statein_type), intent(in) :: statein
 
     ! Locals
@@ -386,7 +386,7 @@ contains
     do ithread = 1,nThreads
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
         end do
       end do  
     end do
@@ -394,7 +394,7 @@ contains
     do ithread = 1,nThreads
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1, nVertLevels
-          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         enddo
       enddo
     enddo
@@ -403,7 +403,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
+            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -413,7 +413,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
+            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -423,7 +423,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
+            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -433,7 +433,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
+            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -443,7 +443,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
+            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -453,7 +453,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
+            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -463,7 +463,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
+            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -473,7 +473,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
+            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -483,7 +483,7 @@ contains
       do ithread = 1,nThreads
         do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
+            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
           enddo
         enddo
       enddo
@@ -588,7 +588,7 @@ contains
 
     ! Arguments
     type(GFS_stateout_type),     intent(in   ) :: physics_state
-    type(GFS_interstitial_type), intent(in   ) :: interstitial
+    type(GFS_interstitial_type), intent(in   ) :: interstitial(:)
     ! Locals
     type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: diag_pool
@@ -641,10 +641,10 @@ contains
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
              do iTracer = 1,num_scalars 
-                MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * interstitial % ten_q(iCol,iLay,iTracer)
+                MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * interstitial(ithread) % ten_q(iCol,iLay,iTracer)
              end do
-             MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (interstitial % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-             rt_diabatic_tend(iLay,iCol) = (interstitial % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+             MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+             rt_diabatic_tend(iLay,iCol) = (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
              coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
              MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
           end do 

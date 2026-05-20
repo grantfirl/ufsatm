@@ -387,7 +387,7 @@ contains
     
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas(UFSATM_radtend, UFSATM_statein)
+    call ufs_physics_to_mpas(UFSATM_statein, UFSATM_interstitial)
     
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock, debug)
@@ -424,9 +424,6 @@ contains
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP timestep_finalize step failed",messageType=MPAS_LOG_CRIT)
     stop_time = MPI_Wtime()
     setupClock = setupClock + (stop_time - start_time)
-  
-    ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_microphysics_to_mpas(UFSATM_stateout)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_interstitial)
