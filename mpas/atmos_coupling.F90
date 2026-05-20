@@ -538,7 +538,7 @@ contains
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
              do iScalar = 1, num_scalars
-               tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalar_phys(iScalar,iLay,iCol)
+               tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalars_phys(iScalar,iLay,iCol)
              end do
           end do
        end do
@@ -578,7 +578,7 @@ contains
   !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
   !> #########################################################################################
-  subroutine ufs_microphysics_to_mpas(physics_state, interstial)
+  subroutine ufs_microphysics_to_mpas(physics_state, interstitial)
     use GFS_typedefs,       only : GFS_stateout_type
     use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
