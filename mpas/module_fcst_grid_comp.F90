@@ -280,10 +280,6 @@ contains
     call ESMF_ClockGet(clock, currTime=currTime, startTime=startTime, rc=rc)
     call ESMF_TimeIntervalGet(currTime-StartTime, s=seconds, rc=rc)
     n_atmsteps = seconds/dt_atmos
-    
-    if (first) then
-       call ESMF_ClockGet(clock, currTime=currTime, stopTime=stopTime, rc=rc)
-       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
 
     if (first) then
        call ESMF_ClockGet(clock, currTime=currTime, stopTime=stopTime, rc=rc)
