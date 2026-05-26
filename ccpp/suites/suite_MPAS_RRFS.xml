@@ -22,7 +22,17 @@
     </subcycle>
   </group>
   <group name="physics">
+    <subcycle loop="1">
+      <scheme>dcyc2t3</scheme>
+      <scheme>GFS_photochemistry</scheme>
+      <scheme>GFS_photochemistry_post</scheme>
+    </subcycle>
   </group>
   <group name="microphysics">
+    <subcycle loop="1">
+      <scheme>mp_thompson</scheme>
+      <scheme>mp_thompson_post</scheme>
+      <scheme>GFS_MP_generic_post</scheme>
+     </subcycle>
   </group>
 </suite>

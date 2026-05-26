@@ -10,10 +10,12 @@ module atmos_coupling_mod
   implicit none
   public :: MPAS_statein_type
   public :: MPAS_stateout_type
+  public :: ufs_physics_to_mpas
   public :: ufs_mpas_to_physics
   public :: ufs_microphysics_to_mpas
   public :: ufs_mpas_to_microphysics
   public :: ufs_mpas_grid_to_physics
+  public :: ufs_mpas_sfc_to_physics
 
   !> #######################################################################################
   !> MPAS_statein_type
@@ -176,11 +178,17 @@ contains
     type(mpas_pool_type), pointer :: diag_pool
     type(mpas_pool_type), pointer :: mesh_pool
     type(mpas_pool_type), pointer :: sfc_pool
-    integer :: iCol, iLay, iTracer
+    integer :: iCol, iLay, iTracer, ithread
     integer, pointer :: nCellsSolve, num_scalars, nwat, nVertLevels, index_qv
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer, dimension(:), pointer :: isltyp
     real(kind=RKIND) :: rho1, rho2, tem1, tem2
     real(kind=RKIND),dimension(:,:),pointer  :: qv, qc, qr, qi, qs, qg
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
 
     ! Access MPAS data pools.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state',     state_pool)
@@ -211,45 +219,43 @@ contains
     call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=1)
     call mpas_pool_get_array(diag_pool,  'pressure_base',          MPAS_state % pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
+    call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
 
     ! Copy fields from MPAS data containers to physics data containers.
     ! [k, i] -> [i, k]
     ! Retain bottom-up convention
-    do iCol = 1, nCellsSolve
-       physics_state % tgrs(iCol,:)   = MPAS_state % theta(:,iCol)*MPAS_state % exner(:,iCol)
-       physics_state % ugrs(iCol,:)   = MPAS_state % ux(:,iCol)
-       physics_state % vgrs(iCol,:)   = MPAS_state % uy(:,iCol)
-       physics_state % phil(iCol,:)   = MPAS_state % zz(:,iCol)
-       physics_state % phii(iCol,:)   = MPAS_state % zgrid(:,iCol)
-       physics_state % prslk(iCol,:)  = MPAS_state % exner(:,iCol)
-       ! MPAS provides vertical velocity at interfaces, compute layer mean.
-       do iLay=1,nVertLevels
-          physics_state % vvl(iCol,iLay) = 0.5*(MPAS_state % w(iLay,iCol) + MPAS_state % w(iLay+1,iCol))
-       enddo
-       do iTracer = 1,num_scalars
-          physics_state % qgrs(iCol,:,iTracer) = MPAS_state % tracers(iTracer,:,iCol)
-       enddo
-    enddo    
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          physics_state % tgrs(iCol,:)   = MPAS_state % theta(:,iCol)*MPAS_state % exner(:,iCol)
+          physics_state % ugrs(iCol,:)   = MPAS_state % ux(:,iCol)
+          physics_state % vgrs(iCol,:)   = MPAS_state % uy(:,iCol)
+          physics_state % phil(iCol,:)   = MPAS_state % zz(:,iCol)
+          physics_state % phii(iCol,:)   = MPAS_state % zgrid(:,iCol)
+          physics_state % prslk(iCol,:)  = MPAS_state % exner(:,iCol)
+          ! MPAS provides vertical velocity at interfaces, compute layer mean.
+          do iLay=1,nVertLevels
+             physics_state % vvl(iCol,iLay) = 0.5*(MPAS_state % w(iLay,iCol) + MPAS_state % w(iLay+1,iCol))
+          end do
+          do iTracer = 1,num_scalars
+             physics_state % qgrs(iCol,:,iTracer) = MPAS_state % tracers(iTracer,:,iCol)
+          end do
 
-    ! Set surface temperature to lowest level temperature (revisit for coupling)
-    do iCol = 1, nCellsSolve
-       surface_state % tsfc(iCol) = MPAS_state % theta(1,iCol)*MPAS_state % exner(1,iCol)
-    enddo
+          ! Set surface temperature to lowest level temperature (revisit for coupling)
+          surface_state % tsfc(iCol) = MPAS_state % theta(1,iCol)*MPAS_state % exner(1,iCol)
 
-    ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
-    ! (from mpas_atmphys_interface.F:MPAS_to_physics())
-    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
-    do iCol = 1, nCellsSolve
-       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
-       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
-       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
-       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
-       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
-            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
-       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
-                                             MPAS_state % pressure_p(1,iCol) + &
-                                             MPAS_state % pressure_b(1,iCol)
-    enddo
+          ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
+          ! (from mpas_atmphys_interface.F:MPAS_to_physics())
+          tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
+          tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
+          rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
+          rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
+          MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
+               * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
+          MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
+                                                MPAS_state % pressure_p(1,iCol) + &
+                                                MPAS_state % pressure_b(1,iCol)
+       end do
+    end do
 
 
     ! Compute hydrostatic pressures
@@ -263,11 +269,13 @@ contains
     ! Copy MPAS pressures into physics data containers.
     ! [k, i] -> [i, k]
     ! Retain bottom-up convention
-    do iCol = 1, nCellsSolve
-       physics_state % pgr(iCol)    = MPAS_state % pintdry(nVertLevels+1,iCol)
-       physics_state % prsl(iCol,:) = MPAS_state % pmiddry(:,iCol)
-       physics_state % prsi(iCol,:) = MPAS_state % pintdry(:,iCol)
-    enddo
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          physics_state % pgr(iCol)    = MPAS_state % pintdry(nVertLevels+1,iCol)
+          physics_state % prsl(iCol,:) = MPAS_state % pmiddry(:,iCol)
+          physics_state % prsi(iCol,:) = MPAS_state % pintdry(:,iCol)
+       end do
+    end do
     ! Housekeeping
     nullify (mesh_pool)
     nullify (state_pool)
@@ -277,6 +285,10 @@ contains
 
   !> #########################################################################################
   !> Procedure to update state with physics tendencies prior to calling MPAS dynamical core.
+  !> 
+  !> - Aggregate all scheme tendencies (tend_th_phys)
+  !> - Convert from theta to theta_m (tend_theta_phys)
+  !> - Update dynamic tendencies. (tend_theta_dyn = tend_theta_dyn + tend_theta_phys)
   !>
   !> Analogous to phys_get_tend in physics/mpas_atmphys_todynamics.F
   !> Instead of updating the state with physics tendencies from the MPAS "tend_pool", we
@@ -284,7 +296,275 @@ contains
   !>
   !> #########################################################################################
   subroutine ufs_physics_to_mpas()
+      use GFS_typedefs,       only : GFS_statein_type
+    use CCPP_typedefs,      only : GFS_interstitial_type
+    use mpas_derived_types, only : mpas_pool_type
+    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
+    use mpas_kind_types,    only : RKIND
+    use mpas_constants,     only : rv, rgas, gravity
+    ! Arguments
+    type(GFS_interstitial_type), intent(in) :: interstitial(:)
+    type(GFS_statein_type), intent(in) :: statein
 
+    ! Locals
+    type(mpas_pool_type),               pointer :: state_pool
+    type(mpas_pool_type),               pointer :: mesh_pool
+    type(mpas_pool_type),               pointer :: tend_pool
+    type(mpas_pool_type),               pointer :: diag_pool
+    real(kind=RKIND), dimension(:,:),   pointer :: mass
+    real(kind=RKIND), dimension(:,:),   pointer :: exner
+    real(kind=RKIND), dimension(:,:),   pointer :: theta_m
+    real(kind=RKIND), dimension(:,:,:), pointer :: scalars
+    real(kind=RKIND), dimension(:),     pointer :: surface_pressure
+    real(kind=RKIND), dimension(:,:),   pointer :: zgrid
+    real(kind=RKIND), dimension(:,:),   pointer :: zz
+    real(kind=RKIND), dimension(:,:),     pointer :: pressure_b
+    real(kind=RKIND), dimension(:,:),     pointer :: pressure_p
+    real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
+    real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
+    real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
+    real(kind=RKIND), dimension(:,:),   pointer :: tend_theta_dyn
+    real(kind=RKIND), dimension(:,:,:), pointer :: tend_scalars_dyn
+    integer, pointer :: nCellsSolve, num_scalars, nVertLevels 
+    integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
+    integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    integer :: iCol,iLay,ithread,iScalar
+    real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    ! Access MPAS data pools
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',  tend_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag_pool)
+
+    ! Get MPAS dimensions
+    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
+    call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
+    call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
+    call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+    call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
+    call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
+    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
+    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
+    call mpas_pool_get_dimension(state_pool, 'index_nc',    index_nc)
+    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
+    call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
+    call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
+
+    ! Grab fields from MPAS pools
+    call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
+    call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
+    call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
+    call mpas_pool_get_array(state_pool,'exner'   ,exner,2  )
+    call mpas_pool_get_array(mesh_pool, 'zz'      ,zz)
+    call mpas_pool_get_array(diag_pool, 'surface_pressure', surface_pressure)
+    call mpas_pool_get_array(mesh_pool, 'zgrid',            zgrid)
+    call mpas_pool_get_array(diag_pool, 'pressure_base',    pressure_b)
+    call mpas_pool_get_array(diag_pool, 'pressure_p',       pressure_p)
+
+
+    ! Allocate local variables
+    allocate(tend_th_phys(nVertLevels,nCellsSolve+1))
+    allocate(tend_theta_phys(nVertLevels,nCellsSolve+1))
+    allocate(tend_scalars_phys(num_scalars, nVertLevels,nCellsSolve+1))
+    tend_th_phys(:,:)        = 0._RKIND
+    tend_theta_phys(:,:)     = 0._RKIND
+    tend_scalars_phys(:,:,:) = 0._RKIND
+
+    ! GJF: Add microphysics heating (from last timestep) to tend_th_phys
+
+    ! GJF: Add accumulated tendencies from the physics group
+
+    do ithread = 1,nThreads
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        do iLay = 1,nVertLevels
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+        end do
+      end do  
+    end do
+
+    do ithread = 1,nThreads
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        do iLay = 1, nVertLevels
+          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+        enddo
+      enddo
+    enddo
+
+    if(index_qc .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_qi .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_qr .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_qs .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_qg .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_nc .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_ni .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_nifa .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+    if(index_nwfa .gt. -1) then
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
+          enddo
+        enddo
+      enddo
+    end if
+
+
+    ! Longwave radiation: [i, k] -> [k, i]
+    ! do ithread = 1,nThreads
+    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+    !       do iLay = 1,nVertLevels
+    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrlw(iCol,iLay)*mass(iLay,iCol)
+    !       end do
+    !    end do
+    ! end do
+
+    ! Shortwave radiation: [i, k] -> [k, i]
+    ! do ithread = 1,nThreads
+    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+    !       do iLay = 1,nVertLevels
+    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrsw(iCol,iLay)*mass(iLay,iCol)
+    !       end do
+    !    end do
+    ! end do
+
+    ! Convection: [i, k] -> [k, i]
+
+    ! PBL: [i, k] -> [k, i]
+
+    ! Convert from potential temperature to modified potential temperature (theta -> theta_m)
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+             coeff = (1. + rv/rgas * scalars(index_qv,iLay,iCol))
+             tend_th_phys(iLay,iCol) = coeff * tend_th_phys(iLay,iCol) + rv/rgas * theta_m(iLay,iCol) * tend_scalars_phys(index_qv,iLay,iCol) / coeff
+             tend_theta_phys(iLay,iCol) = tend_theta_phys(iLay,iCol) + tend_th_phys(iLay,iCol)
+          end do
+       end do
+    end do
+
+    ! Update MPAS state tendencies
+    call mpas_pool_get_array(tend_pool, 'theta_m', tend_theta_dyn)
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+               tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)
+          end do
+       end do
+    end do
+
+    call mpas_pool_get_array(tend_pool, 'scalars_tend', tend_scalars_dyn)
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+             do iScalar = 1, num_scalars
+               tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalars_phys(iScalar,iLay,iCol)
+             end do
+          end do
+       end do
+    end do
+
+    ! Housekeeping
+    deallocate(tend_th_phys)
+    deallocate(tend_theta_phys)
+    deallocate(tend_scalars_phys)
+
+    ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
+    ! (from mpas_atmphys_interface.F:MPAS_to_physics())
+    do iCol = 1, nCellsSolve
+       tem1 = zgrid(2,iCol) - zgrid(1,iCol)
+       tem2 = zgrid(3,iCol) - zgrid(2,iCol)
+       rho1 = mass(1,iCol) * zz(1,iCol) * (1. + scalars(index_qv,1,iCol))
+       rho2 = mass(2,iCol) * zz(2,iCol) * (1. + scalars(index_qv,2,iCol))
+       surface_pressure(iCol) = 0.5*gravity*( zgrid(2,iCol) -  zgrid(1,iCol)) &
+            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
+       surface_pressure(iCol) = surface_pressure(iCol) + pressure_p(1,iCol) + &
+                                pressure_b(1,iCol)
+    enddo
+
+    ! Housekeeping
+    nullify (state_pool)
+    nullify (mesh_pool)
+    nullify (diag_pool)
   end subroutine ufs_physics_to_mpas
 
   !> #########################################################################################
@@ -296,40 +576,78 @@ contains
   !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
   !> #########################################################################################
-  subroutine ufs_microphysics_to_mpas(physics_state)
+  subroutine ufs_microphysics_to_mpas(physics_state, interstitial)
     use GFS_typedefs,       only : GFS_stateout_type
+    use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
-    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
-    use mpas_constants,     only : gravity
+    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension, mpas_pool_get_config
+    use mpas_constants,     only : gravity, rvord
     use mpas_kind_types,    only : RKIND
 
     ! Arguments
-    type(GFS_stateout_type), intent(in   ) :: physics_state
+    type(GFS_stateout_type),     intent(in   ) :: physics_state
+    type(GFS_interstitial_type), intent(in   ) :: interstitial(:)
     ! Locals
-    type(mpas_statein_type) :: mpas_state
+    type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: diag_pool
     type(mpas_pool_type), pointer :: mesh_pool
     type(mpas_pool_type), pointer :: state_pool
-    integer, pointer :: nCellsSolve, index_qv
-    integer :: iCol
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2
+    type(mpas_pool_type), pointer :: tend_pool
+    integer, pointer :: nCellsSolve, index_qv, num_scalars, nVertLevels
+    integer :: iCol, ithread, iLay, iTracer
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff
+    real(kind=RKIND), pointer :: config_dt
+    real(kind=RKIND), dimension(:,:), pointer :: rt_diabatic_tend
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
 
     ! Access MPAS data pools
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state',     state_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',      diag_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',      tend_pool)
+
+    call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_dt', config_dt)
 
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+    call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
+    call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
     ! Grab fields from MPAS pools
-    call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=1)
+    call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=2)
     call mpas_pool_get_array(mesh_pool,  'zgrid',                  MPAS_state % zgrid)
     call mpas_pool_get_array(mesh_pool,  'zz',                     MPAS_state % zz)
-    call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=1)
+    call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=2)
     call mpas_pool_get_array(diag_pool,  'pressure_base',          MPAS_state % pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
+    call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
+    call mpas_pool_get_array(state_pool, 'exner',                  MPAS_state % exner,   timeLevel=2)
+    call mpas_pool_get_array(diag_pool,  'theta',                  MPAS_state % theta)
+    call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=2)
+    call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend',       rt_diabatic_tend)
+    
+    !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
+    ! update the state variables here. Also, we need to save the microphysics heating rate to be applied (again?)
+    ! before
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+             do iTracer = 1,num_scalars 
+                MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * interstitial(ithread) % ten_q(iCol,iLay,iTracer)
+             end do
+             MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+             rt_diabatic_tend(iLay,iCol) = (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+             coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
+             MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
+          end do 
+       end do
+    end do
 
     ! [i, k] -> [k, i]
     ! top-down -> bottom-up ordering convention
@@ -337,18 +655,19 @@ contains
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
-    call mpas_pool_get_array(diag_pool,   'surface_pressure'      ,MPAS_state % surface_pressure)
-    do iCol = 1, nCellsSolve
-       tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
-       tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
-       rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
-       rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
-       MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
-            * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
-       MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
-                                             MPAS_state % pressure_p(1,iCol) + &
-                                             MPAS_state % pressure_b(1,iCol)
-    enddo
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          tem1 = MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)
+          tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
+          rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
+          rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
+          MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
+               * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
+          MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
+                                                MPAS_state % pressure_p(1,iCol) + &
+                                                MPAS_state % pressure_b(1,iCol)
+       end do
+    end do
 
     ! Housekeeping
     nullify (state_pool)
@@ -369,9 +688,54 @@ contains
   !>
   !> #########################################################################################
   subroutine ufs_mpas_to_microphysics(physics_state)
-    use GFS_typedefs,         only : GFS_statein_type
+    use GFS_typedefs,         only : GFS_stateout_type
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     ! Arguments
-    type(GFS_statein_type),   intent(inout) :: physics_state
+    type(GFS_stateout_type), intent(inout) :: physics_state
+
+    integer :: ithread, iCol, iTracer
+
+    integer, pointer :: nCellsSolve, num_scalars, nwat, nVertLevels, index_qv
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+
+    type(mpas_stateout_type) :: mpas_state
+
+    type(mpas_pool_type),               pointer :: state_pool
+    type(mpas_pool_type),               pointer :: diag_pool
+    type(mpas_pool_type),               pointer :: mesh_pool
+
+    !GJF: grab updated state, put it in GFSstateout
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state',     state_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',      diag_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
+
+    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
+    call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
+    call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
+
+    call mpas_pool_get_array(diag_pool,  'theta',     mpas_state % theta)
+    call mpas_pool_get_array(diag_pool,  'exner',     mpas_state % exner)
+    call mpas_pool_get_array(state_pool, 'scalars',   mpas_state % tracers, timeLevel=2)
+
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          physics_state % gt0(iCol,:)   = mpas_state % theta(:,iCol)*mpas_state % exner(:,iCol)
+          do iTracer = 1,num_scalars
+             physics_state % gq0(iCol,:,iTracer) = mpas_state % tracers(iTracer,:,iCol)
+          end do
+       end do
+    end do
+
+    nullify(diag_pool)
+    nullify(mesh_pool)
+    nullify(state_pool)
+
+    !GJF: remove microphysics heating from state before calling microphysics - this is already done in mpas_atm_time_integration.F/atm_recover_large_step_variables_work line 3317
  
   end subroutine ufs_mpas_to_microphysics
 
@@ -494,23 +858,25 @@ contains
     type(GFS_grid_type),      intent(inout) :: physics_grid
     ! Locals
     type(mpas_pool_type), pointer :: mesh_pool
-    integer :: i, ierr
-    integer, pointer :: nCellsSolve
+    integer :: i, ierr, ithread
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     real(RKIND), pointer :: lat(:), lon(:), area(:), meshDensity(:)
     
     real(RKIND), pointer :: nominalMinDc
     real(RKIND), pointer :: config_len_disp
     real(RKIND)          :: rad2deg
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_grid_to_physics'
-    
+
     ierr = 0
     rad2deg = 180.0_RKIND/pii
     
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
     ! Access MPAS data pools.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
-    
-    ! Get MPAS dimensions
-    call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     
     call mpas_pool_get_array(mesh_pool,  'latCell',                lat)
     call mpas_pool_get_array(mesh_pool,  'lonCell',                lon)
@@ -551,18 +917,67 @@ contains
     end if
     if (ierr/=0)  call mpas_log_write(subname // ' ERROR: Call to ufs_mpas_grid_to_physics() failed', messageType=MPAS_LOG_CRIT)
 
-    do i=1, nCellsSolve
-      physics_grid % xlat(i)   = lat(i)
-      physics_grid % xlon(i)   = lon(i)
-      physics_grid % xlat_d(i) = physics_grid % xlat(i) * rad2deg
-      physics_grid % xlon_d(i) = physics_grid % xlon(i) * rad2deg
-      physics_grid % sinlat(i) = sin(physics_grid % xlat(i))
-      physics_grid % coslat(i) = sqrt(1.0_RKIND - physics_grid % sinlat(i) * physics_grid % sinlat(i))
-      physics_grid % area(i)   = area(i)
-      !formula for dx comes from mpas_atmphys_driver_gwdo.F instead of sqrt(area) as in FV3
-      physics_grid % dx(i)     = config_len_disp / meshDensity(i)**0.25
+    do ithread = 1,nThreads
+       do i = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          physics_grid % xlat(i)   = lat(i)
+          physics_grid % xlon(i)   = lon(i)
+          physics_grid % xlat_d(i) = physics_grid % xlat(i) * rad2deg
+          physics_grid % xlon_d(i) = physics_grid % xlon(i) * rad2deg
+          physics_grid % sinlat(i) = sin(physics_grid % xlat(i))
+          physics_grid % coslat(i) = sqrt(1.0_RKIND - physics_grid % sinlat(i) * physics_grid % sinlat(i))
+          physics_grid % area(i)   = area(i)
+          !formula for dx comes from mpas_atmphys_driver_gwdo.F instead of sqrt(area) as in FV3
+          physics_grid % dx(i)     = config_len_disp / meshDensity(i)**0.25
+       end do
     end do
     
   end subroutine ufs_mpas_grid_to_physics
+
+  subroutine ufs_mpas_sfc_to_physics(physics_sfcprop)
+    use GFS_typedefs,         only : GFS_sfcprop_type
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+    use mpas_kind_types,      only : RKIND
+
+    ! Arguments
+    type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
+    ! Locals
+    type(mpas_pool_type), pointer :: mesh_pool, sfc_input
+    integer :: i, ierr, iCol, ithread
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    real(RKIND), pointer :: landmask(:), sst(:), snow(:), tmn(:), albbck(:)
+    
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    ! Access MPAS data pools.
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
+
+    !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
+    call mpas_pool_get_array(mesh_pool, 'landmask',  landmask)
+    call mpas_pool_get_array(sfc_input, 'sst',       sst)
+    call mpas_pool_get_array(sfc_input, 'snow',      snow)
+    call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)
+    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
+
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          physics_sfcprop % slmsk(iCol) = landmask(iCol)
+          physics_sfcprop % tsfco(iCol) = sst(iCol)
+          physics_sfcprop % weasd(iCol) = snow(iCol)
+          physics_sfcprop % tg3(iCol)   = tmn(iCol)
+          !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
+          !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
+          physics_sfcprop % alvsf(iCol) = albbck(iCol)
+          physics_sfcprop % alvwf(iCol) = albbck(iCol)
+          physics_sfcprop % alnsf(iCol) = albbck(iCol)
+          physics_sfcprop % alnwf(iCol) = albbck(iCol)
+       end do
+    end do
+
+  end subroutine ufs_mpas_sfc_to_physics
   
 end module atmos_coupling_mod

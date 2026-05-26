@@ -96,6 +96,7 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_phys_time_vary.fv3.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rad_time_vary.mpas.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_time_vary_pre.fv3.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/dcyc2t3.f',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_radiation_surface.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_radiation_post.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmg_pre.F90',
@@ -110,11 +111,23 @@ SCHEME_FILES = [
     'physics/physics/Radiation/RRTMG/rrtmg_lw_post.F90',
     'physics/physics/Radiation/RRTMG/rrtmg_sw_post.F90',
     'physics/physics/Radiation/RRTMG/rad_sw_pre.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_pre.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_setup.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_cloud_diagnostics.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_cloud_mp.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_cloud_overlap.F90',
     'physics/physics/Radiation/RRTMGP/rrtmgp_aerosol_optics.F90',
     'physics/physics/Radiation/RRTMGP/rrtmgp_lw_main.F90',
     'physics/physics/Radiation/RRTMGP/rrtmgp_sw_main.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_photochemistry.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_photochemistry_post.F90',
     'physics/physics/photochem/module_h2ophys.F90',
-    'physics/physics/photochem/module_ozphys.F90'
+    'physics/physics/photochem/module_ozphys.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_MP_generic_post.F90',
+    'physics/physics/MP/Thompson/mp_thompson.F90',
+    'physics/physics/MP/Thompson/mp_thompson_post.F90',
+    'physics/physics/MP/TEMPO/mp_tempo.F90',
+    'physics/physics/MP/TEMPO/mp_tempo_post.F90'
 ]
 
 # Default build dir, relative to current working directory,

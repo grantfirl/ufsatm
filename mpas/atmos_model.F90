@@ -102,7 +102,7 @@ contains
     use ufs_mpas_subdriver,     only : MPAS_control_type
     use ufs_mpas_subdriver,     only : ufs_mpas_init
     use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc, ufs_mpas_read_stream_lists
-    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
     use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
@@ -272,7 +272,9 @@ contains
     ! and map it to the physics data containers (e.g. Typdefs). We will use a similar routine
     ! in a different "piece" later, but copying the Updated state from the dycore before calling
     ! the microphsyics.
-    !
+    
+    call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
+
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
 
     ! Initialize the CCPP framework
@@ -355,7 +357,7 @@ contains
        ! but there may be interstitial schemes (NOTE that I added an new MPAS specific interstital file
        ! already, GFS_rad_time_vary.mpas.F90. I don't think it is complete.
        ! 
-       !call CCPP_step (step="radiation", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
+       call CCPP_step (step="radiation", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
        if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP radiation step failed",messageType=MPAS_LOG_CRIT)
     endif
     stop_time = MPI_Wtime()
@@ -385,7 +387,7 @@ contains
     
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas()
+    call ufs_physics_to_mpas(UFSATM_statein, UFSATM_interstitial)
     
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock, debug)
@@ -406,7 +408,7 @@ contains
  
     ! Prepare CCPP physics inputs with MPAS dycore outputs.
     ! NOT YET IMPLEMENTED
-    call ufs_mpas_to_microphysics(UFSATM_statein)
+    call ufs_mpas_to_microphysics(UFSATM_stateout)
 
     ! Call CCPP Microphysics Group
     ! NOT YET IMPLEMENTED in SDF
@@ -424,7 +426,7 @@ contains
     setupClock = setupClock + (stop_time - start_time)
   
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_microphysics_to_mpas(UFSATM_stateout)
+    call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_interstitial)
 
   end subroutine atmos_model_microphysics
 
