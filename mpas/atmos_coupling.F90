@@ -295,7 +295,7 @@ contains
   !> will use tendencies from the CCPP Physics.
   !>
   !> #########################################################################################
-  subroutine ufs_physics_to_mpas()
+  subroutine ufs_physics_to_mpas(statein, interstitial)
       use GFS_typedefs,       only : GFS_statein_type
     use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
