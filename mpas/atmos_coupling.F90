@@ -295,8 +295,8 @@ contains
   !> will use tendencies from the CCPP Physics.
   !>
   !> #########################################################################################
-  subroutine ufs_physics_to_mpas(statein, interstitial)
-      use GFS_typedefs,       only : GFS_statein_type
+  subroutine ufs_physics_to_mpas(statein, control, interstitial, nblks)
+    use GFS_typedefs,       only : GFS_statein_type, GFS_control_type
     use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
@@ -305,7 +305,8 @@ contains
     ! Arguments
     type(GFS_interstitial_type), intent(in) :: interstitial(:)
     type(GFS_statein_type), intent(in) :: statein
-
+    type(GFS_control_type), intent(in) :: control
+    integer, intent(in) :: nblks
     ! Locals
     type(mpas_pool_type),               pointer :: state_pool
     type(mpas_pool_type),               pointer :: mesh_pool
@@ -329,7 +330,7 @@ contains
     integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
     integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    integer :: iCol,iLay,ithread,iScalar
+    integer :: iCol,iLay,ithread,iScalar,nb,i_blk
     real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
 
     ! Get openMP information
@@ -381,11 +382,29 @@ contains
     ! GJF: Add microphysics heating (from last timestep) to tend_th_phys
 
     ! GJF: Add accumulated tendencies from the physics group
-
+    do ithread=1,nThreads
+      iCol = cellSolveThreadStart(ithread)
+      do nb=1, nblks
+        do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+          write(*,*) 'ithread, nb, iblk, iCol',ithread,nb,i_blk,iCol
+          iCol = iCol+ 1
+        end do
+      end do
+      write(*,*) '### end of blks in thread ###, ithread, iCol, cellSolveThreadEnd(ithread)',ithread,iCol,cellSolveThreadEnd(ithread)
+    end do
+    STOP
     do ithread = 1,nThreads
+    !write(*,*) 'shape(dtdt), start, end, lev', shape(interstitial(ithread)%dtdt), cellSolveThreadStart(ithread), cellSolveThreadEnd(ithread), nVertLevels
+    !start=cellSolveThreadStart(ithread); increment this for MPAS arrays; by the time you loop through all blocks, should go from
+    !cellSolveThreadStart(ithread) to cellSolveThreadEnd(ithread)
+      !do nb = 1, nblks
+        !ixs=GFS_control%chunk_begin(nb),ixe=GFS_control%chunk_end(nb)
+        !i=(nb-1)*  
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+          !do nb = 1, nblks  
+            tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+          !end do
         end do
       end do  
     end do
@@ -923,6 +942,7 @@ contains
           physics_grid % xlon(i)   = lon(i)
           physics_grid % xlat_d(i) = physics_grid % xlat(i) * rad2deg
           physics_grid % xlon_d(i) = physics_grid % xlon(i) * rad2deg
+         ! write(*,*) 'ithread, i, xlat, xlon, xlat_d, xlon_d',ithread, i, physics_grid % xlat(i),physics_grid % xlon(i),physics_grid % xlat_d(i),physics_grid % xlon_d(i)
           physics_grid % sinlat(i) = sin(physics_grid % xlat(i))
           physics_grid % coslat(i) = sqrt(1.0_RKIND - physics_grid % sinlat(i) * physics_grid % sinlat(i))
           physics_grid % area(i)   = area(i)
@@ -962,9 +982,13 @@ contains
     call mpas_pool_get_array(sfc_input, 'snow',      snow)
     call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)
     call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
-
+    write(*,*) 'cellSolveThreadStart',cellSolveThreadStart
+    write(*,*) 'cellSolveThreadEnd',cellSolveThreadEnd
+    write(*,*) 'nthreads',nThreads
+    write(*,*) 'array shapes',shape(landmask),shape(physics_sfcprop%slmsk)
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          write(*,*) 'iCol',iCol
           physics_sfcprop % slmsk(iCol) = landmask(iCol)
           physics_sfcprop % tsfco(iCol) = sst(iCol)
           physics_sfcprop % weasd(iCol) = snow(iCol)

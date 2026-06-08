@@ -118,7 +118,7 @@ contains
     logical :: file_exists
     real(MPAS_kind_phys) :: start_time, stop_time
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_init'
-    
+    write(*,*) 'atmos_model_init_1'    
     ! Start timer for this procedure (init).
     start_time = MPI_Wtime()
 
@@ -218,7 +218,7 @@ contains
     ! Read in MPAS Stream_list file(s) (master processor only in ufs_mpas_read_stream_lists)
     !
     call ufs_mpas_read_stream_lists(Cfg%me, Cfg%master, Cfg%mpi_comm)
-
+    write(*,*) 'atmos_model_init 2'
     !> #########################################################################################
     !> #########################################################################################
     !> END MPAS DYCORE INITIALIZATION
@@ -260,7 +260,7 @@ contains
     Cfg%fn_nml = nml_filename
     call MPAS_initialize(UFSATM_control, UFSATM_intdiag, UFSATM_grid, UFSATM_tbd, UFSATM_sfcprop, &
          UFSATM_statein, UFSATM_stateout, UFSATM_cldprop, UFSATM_radtend, UFSATM_coupling, Cfg)
-    
+    write(*,*) 'atmos_model_init 3'
     call ufs_mpas_grid_to_physics(UFSATM_grid)
 
     ! Populate UFSATM data containers with MPAS "input" stream. We need to do this becuase
@@ -272,19 +272,19 @@ contains
     ! and map it to the physics data containers (e.g. Typdefs). We will use a similar routine
     ! in a different "piece" later, but copying the Updated state from the dycore before calling
     ! the microphsyics.
-    
-    call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
-
+    write(*,*) 'atmos_model_init 4'
+    !call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
+    write(*,*) 'atmos_model_init 5'
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
-
+    write(*,*) 'atmos_model_init 6'
     ! Initialize the CCPP framework
     call CCPP_step (step="init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP init step failed",messageType=MPAS_LOG_CRIT)
-
+    write(*,*) 'atmos_model_init 7'
     ! Initialize the CCPP physics
     call CCPP_step (step="physics_init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP physics_init step failed",messageType=MPAS_LOG_CRIT)
-
+    write(*,*) 'atmos_model_init 8'
     ! Initialize stochastic physics pattern generation / cellular automata
     ! NOT YET IMPLEMENTED
 
@@ -387,7 +387,7 @@ contains
     
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas(UFSATM_statein, UFSATM_interstitial)
+    call ufs_physics_to_mpas(UFSATM_statein, UFSATM_control, UFSATM_interstitial, Atmos % nblks)
     
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock, debug)
