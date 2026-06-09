@@ -426,7 +426,7 @@ contains
     setupClock = setupClock + (stop_time - start_time)
   
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_interstitial)
+    call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_interstitial, UFSATM_control, Atmos % nblks)
 
   end subroutine atmos_model_microphysics
 

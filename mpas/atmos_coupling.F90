@@ -386,125 +386,139 @@ contains
       iCol = cellSolveThreadStart(ithread)
       do nb=1, nblks
         do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
-          write(*,*) 'ithread, nb, iblk, iCol',ithread,nb,i_blk,iCol
+          do iLay = 1,nVertLevels 
+            tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(i_blk,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+            tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qv)*mass(iLay,iCol)
+          end do
           iCol = iCol+ 1
         end do
       end do
-      write(*,*) '### end of blks in thread ###, ithread, iCol, cellSolveThreadEnd(ithread)',ithread,iCol,cellSolveThreadEnd(ithread)
     end do
-    STOP
-    do ithread = 1,nThreads
-    !write(*,*) 'shape(dtdt), start, end, lev', shape(interstitial(ithread)%dtdt), cellSolveThreadStart(ithread), cellSolveThreadEnd(ithread), nVertLevels
-    !start=cellSolveThreadStart(ithread); increment this for MPAS arrays; by the time you loop through all blocks, should go from
-    !cellSolveThreadStart(ithread) to cellSolveThreadEnd(ithread)
-      !do nb = 1, nblks
-        !ixs=GFS_control%chunk_begin(nb),ixe=GFS_control%chunk_end(nb)
-        !i=(nb-1)*  
-      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-        do iLay = 1,nVertLevels
-          !do nb = 1, nblks  
-            tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (interstitial(ithread)%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
-          !end do
-        end do
-      end do  
-    end do
-
-    do ithread = 1,nThreads
-      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-        do iLay = 1, nVertLevels
-          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
-        enddo
-      enddo
-    enddo
 
     if(index_qc .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qc)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_qi .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qi)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_qr .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qr)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_qs .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qs)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_qg .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_qg)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_nc .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_nc)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_ni .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_ni)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_nifa .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_nifa)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
     if(index_nwfa .gt. -1) then
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial(ithread)%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
-          enddo
-        enddo
-      enddo
+      do ithread=1,nThreads
+        iCol = cellSolveThreadStart(ithread)
+        do nb=1, nblks
+          do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+            do iLay = 1,nVertLevels
+              tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + interstitial(ithread)%dqdt(i_blk,iLay,index_nwfa)*mass(iLay,iCol)
+            end do
+            iCol = iCol+ 1
+          end do
+        end do
+      end do
     end if
 
 
@@ -595,8 +609,8 @@ contains
   !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
   !> #########################################################################################
-  subroutine ufs_microphysics_to_mpas(physics_state, interstitial)
-    use GFS_typedefs,       only : GFS_stateout_type
+  subroutine ufs_microphysics_to_mpas(physics_state, interstitial, control, nblks)
+    use GFS_typedefs,       only : GFS_stateout_type, GFS_control_type
     use CCPP_typedefs,      only : GFS_interstitial_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension, mpas_pool_get_config
@@ -605,7 +619,9 @@ contains
 
     ! Arguments
     type(GFS_stateout_type),     intent(in   ) :: physics_state
+    type(GFS_control_type),      intent(in   ) :: control
     type(GFS_interstitial_type), intent(in   ) :: interstitial(:)
+    integer,                     intent(in   ) :: nblks
     ! Locals
     type(mpas_stateout_type) :: mpas_state
     type(mpas_pool_type), pointer :: diag_pool
@@ -613,7 +629,7 @@ contains
     type(mpas_pool_type), pointer :: state_pool
     type(mpas_pool_type), pointer :: tend_pool
     integer, pointer :: nCellsSolve, index_qv, num_scalars, nVertLevels
-    integer :: iCol, ithread, iLay, iTracer
+    integer :: iCol, ithread, iLay, iTracer, i_blk, nb
     real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), dimension(:,:), pointer :: rt_diabatic_tend
@@ -654,18 +670,22 @@ contains
     !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
     ! update the state variables here. Also, we need to save the microphysics heating rate to be applied (again?)
     ! before
-    do ithread = 1,nThreads
-       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-             do iTracer = 1,num_scalars 
-                MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * interstitial(ithread) % ten_q(iCol,iLay,iTracer)
-             end do
-             MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-             rt_diabatic_tend(iLay,iCol) = (interstitial(ithread) % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-             coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
-             MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
-          end do 
-       end do
+    do ithread=1,nThreads
+      iCol = cellSolveThreadStart(ithread)
+      do nb=1, nblks
+        do i_blk=control%chunk_begin(nb),control%chunk_end(nb)
+          do iLay = 1,nVertLevels
+            do iTracer = 1,num_scalars
+              MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * interstitial(ithread) % ten_q(i_blk,iLay,iTracer)
+            end do
+            MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (interstitial(ithread) % ten_t(i_blk,iLay) / MPAS_state % exner(iLay,iCol))
+            rt_diabatic_tend(iLay,iCol) = (interstitial(ithread) % ten_t(i_blk,iLay) / MPAS_state % exner(iLay,iCol))
+            coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
+            MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
+          end do
+          iCol = iCol+ 1
+        end do
+      end do
     end do
 
     ! [i, k] -> [k, i]
@@ -740,7 +760,7 @@ contains
     call mpas_pool_get_array(diag_pool,  'theta',     mpas_state % theta)
     call mpas_pool_get_array(diag_pool,  'exner',     mpas_state % exner)
     call mpas_pool_get_array(state_pool, 'scalars',   mpas_state % tracers, timeLevel=2)
-
+    
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           physics_state % gt0(iCol,:)   = mpas_state % theta(:,iCol)*mpas_state % exner(:,iCol)
