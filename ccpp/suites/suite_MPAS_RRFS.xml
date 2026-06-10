@@ -23,6 +23,7 @@
   </group>
   <group name="physics">
     <subcycle loop="1">
+      <scheme>MPAS_suite_interstitial_1</scheme>
       <scheme>dcyc2t3</scheme>
       <scheme>GFS_photochemistry</scheme>
       <scheme>GFS_photochemistry_post</scheme>
