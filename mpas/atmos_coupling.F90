@@ -302,9 +302,9 @@ contains
     use mpas_kind_types,    only : RKIND
     use mpas_constants,     only : rv, rgas, gravity
     ! Arguments
-    type(GFS_statein_type), intent(in) :: statein
-    type(GFS_statein_type), intent(in) :: stateout
-    type(GFS_control_type), intent(in) :: control
+    type(GFS_statein_type),  intent(in) :: statein
+    type(GFS_stateout_type), intent(in) :: stateout
+    type(GFS_control_type),  intent(in) :: control
     ! Locals
     type(mpas_pool_type),               pointer :: state_pool
     type(mpas_pool_type),               pointer :: mesh_pool
@@ -629,10 +629,10 @@ contains
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
           do iTracer = 1,num_scalars
-            MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * stateout % ten_q(iCol,iLay,iTracer)
+            MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer)
           end do
-          MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (stateout % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-          rt_diabatic_tend(iLay,iCol) = (stateout % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+          MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+          rt_diabatic_tend(iLay,iCol) = (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
           coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
           MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
         end do
