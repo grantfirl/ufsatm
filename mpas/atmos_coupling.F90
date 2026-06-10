@@ -383,7 +383,7 @@ contains
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels 
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (stateout%dtdt(iCol,iLay)/exner(iCol,iLay))*mass(iLay,iCol)
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (stateout%dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
           tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         end do
       end do
