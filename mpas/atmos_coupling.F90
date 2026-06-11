@@ -347,7 +347,9 @@ contains
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+    write(*,*) 'index_qv',index_qv
     call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    write(*,*) 'index_qc',index_qc
     call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
     call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
     call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
@@ -361,7 +363,7 @@ contains
     call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
     call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
     call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
-    call mpas_pool_get_array(state_pool,'exner'   ,exner,2  )
+    call mpas_pool_get_array(diag_pool, 'exner'   ,exner)
     call mpas_pool_get_array(mesh_pool, 'zz'      ,zz)
     call mpas_pool_get_array(diag_pool, 'surface_pressure', surface_pressure)
     call mpas_pool_get_array(mesh_pool, 'zgrid',            zgrid)
@@ -617,7 +619,7 @@ contains
     call mpas_pool_get_array(diag_pool,  'pressure_base',          MPAS_state % pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
-    call mpas_pool_get_array(state_pool, 'exner',                  MPAS_state % exner,   timeLevel=2)
+    call mpas_pool_get_array(diag_pool,  'exner',                  MPAS_state % exner)
     call mpas_pool_get_array(diag_pool,  'theta',                  MPAS_state % theta)
     call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=2)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend',       rt_diabatic_tend)

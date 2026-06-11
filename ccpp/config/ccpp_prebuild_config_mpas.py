@@ -96,7 +96,7 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_phys_time_vary.fv3.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rad_time_vary.mpas.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_time_vary_pre.fv3.F90',
-    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/MPAS_suite_interstitial_1.F90',
+    'physics/physics/Interstitials/MPAS/MPAS_suite_interstitial_1.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/dcyc2t3.f',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_radiation_surface.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_radiation_post.F90',
