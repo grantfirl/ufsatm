@@ -237,7 +237,9 @@ contains
        end do
 
     end do
-
+    call mpas_pool_add_dimension(statePool, 'index_nifa', -99)
+    call mpas_pool_add_dimension(statePool, 'index_nwfa', -99)
+    
     call mpas_pool_add_dimension(statePool, 'moist_start', 1)
     call mpas_pool_add_dimension(statePool, 'moist_end', num_moist)
 

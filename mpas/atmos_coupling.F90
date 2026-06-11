@@ -347,9 +347,7 @@ contains
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
-    write(*,*) 'index_qv',index_qv
     call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
-    write(*,*) 'index_qc',index_qc
     call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
     call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
     call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
