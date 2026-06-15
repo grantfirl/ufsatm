@@ -562,7 +562,10 @@ contains
   !> Procedure to convert of output "CCPP" variables to "MPAS" variables
   !> Called prior to MPAS dynamical core (integration)
   !>
-  !> This procedure updates the MPAS "state" using prognosed physics/microphysics variables.
+  !> This procedure updates the MPAS "state" using prognosed physics/microphysics variables. 
+  !> Note that mpas_pool_shift_time_levels() has been called in ufs_mpas_subdriver/ufs_mpas_run() 
+  !> so that timelevel=1 contains the after-dynamics state already. We're updating it the 
+  !> timelevel=1 state here.
   !>
   !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
@@ -610,16 +613,16 @@ contains
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
     ! Grab fields from MPAS pools
-    call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=2)
+    call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=1)
     call mpas_pool_get_array(mesh_pool,  'zgrid',                  MPAS_state % zgrid)
     call mpas_pool_get_array(mesh_pool,  'zz',                     MPAS_state % zz)
-    call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=2)
+    call mpas_pool_get_array(state_pool, 'rho_zz',                 MPAS_state % rho_zz,  timeLevel=1)
     call mpas_pool_get_array(diag_pool,  'pressure_base',          MPAS_state % pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
     call mpas_pool_get_array(diag_pool,  'exner',                  MPAS_state % exner)
     call mpas_pool_get_array(diag_pool,  'theta',                  MPAS_state % theta)
-    call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=2)
+    call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=1)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend',       rt_diabatic_tend)
     
     !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
@@ -674,7 +677,9 @@ contains
   !>
   !> This procedure accesses MPAS data using MPAS native procedures and stores the data
   !> locally in the data-containers defined above. The MPAS "state" is then translated to the
-  !> CCPP "state" needed by the microphysics.
+  !> CCPP "state" needed by the microphysics. Note that mpas_pool_shift_time_levels() has been 
+  !> called in ufs_mpas_subdriver/ufs_mpas_run() so that timelevel=1 contains the after-dynamics
+  !> state already.
   !>
   !> #########################################################################################
   subroutine ufs_mpas_to_microphysics(physics_state)
@@ -710,7 +715,7 @@ contains
 
     call mpas_pool_get_array(diag_pool,  'theta',     mpas_state % theta)
     call mpas_pool_get_array(diag_pool,  'exner',     mpas_state % exner)
-    call mpas_pool_get_array(state_pool, 'scalars',   mpas_state % tracers, timeLevel=2)
+    call mpas_pool_get_array(state_pool, 'scalars',   mpas_state % tracers, timeLevel=1)
     
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
