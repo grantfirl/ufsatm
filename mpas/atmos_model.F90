@@ -9,7 +9,6 @@ module atmos_model_mod
   use mpi_f08
   ! MPAS
   use MPAS_typedefs,         only : MPAS_kind_phys => kind_phys
-  use atmos_coupling_mod,    only : MPAS_statein_type, MPAS_stateout_type
   use ufs_mpas_constituents, only : constituent_name, is_water_species
   ! CCPP
   use CCPP_data,             only : UFSATM_control      => GFS_control
@@ -45,6 +44,7 @@ module atmos_model_mod
 
   private
 
+  public :: dycore_only
   public :: atmos_control_type
   public :: atmos_model_init
   public :: atmos_model_end
@@ -80,9 +80,6 @@ module atmos_model_mod
 
   ! Component Timers
   real(MPAS_kind_phys) :: setupClock, atmiClock, radClock, physClock,mpasClock, mpClock, outClock
-
-  type(MPAS_statein_type)  :: MPAS_statein
-  type(MPAS_stateout_type) :: MPAS_stateout
 
 contains
   !> #########################################################################################
@@ -331,7 +328,7 @@ contains
   !>
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
-    use atmos_coupling_mod,     only : ufs_mpas_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_physics_to_mpas
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
@@ -371,6 +368,9 @@ contains
     stop_time = MPI_Wtime()
     physClock = physClock + (stop_time - start_time)
 
+    ! Prepare MPAS dycore inputs with CCPP physics outputs.
+    call ufs_physics_to_mpas(UFSATM_control, UFSATM_stateout)
+ 
   end subroutine atmos_model_radiation_physics
 
   !> #########################################################################################
@@ -379,15 +379,10 @@ contains
   !> #########################################################################################
   subroutine atmos_model_dynamics(Atmos)
     use ufs_mpas_subdriver, only : ufs_mpas_run
-    use atmos_coupling_mod, only : ufs_physics_to_mpas
     use MPAS_init,          only : MPAS_initialize
     
     type (atmos_control_type), intent(inout) :: Atmos
     real(MPAS_kind_phys) :: start_time, stop_time
-    
-    ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    ! NOT YET IMPLEMENTED
-    call ufs_physics_to_mpas(UFSATM_statein, UFSATM_control, UFSATM_stateout)
     
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock, debug)
@@ -406,8 +401,7 @@ contains
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_microphysics'
     real(MPAS_kind_phys) :: start_time, stop_time
  
-    ! Prepare CCPP physics inputs with MPAS dycore outputs.
-    ! NOT YET IMPLEMENTED
+    ! Prepare CCPP microphysics inputs with MPAS dycore outputs.
     call ufs_mpas_to_microphysics(UFSATM_stateout)
 
     ! Call CCPP Microphysics Group
