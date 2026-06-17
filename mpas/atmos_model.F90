@@ -70,13 +70,13 @@ module atmos_model_mod
   integer, dimension(:), pointer :: ufs_from_mpas_cnst => null() ! indices into MPAS tracers array  
   
   ! Namelist
-  integer :: blocksize    = 1
-  logical :: dycore_only  = .false.
-  logical :: debug        = .false.
-  logical :: regional     = .false.
+  integer :: blocksize        = 1
+  logical :: dycore_only      = .false.
+  logical :: debug            = .false.
+  logical :: regional         = .false.
 
-  namelist /atmos_model_nml/ blocksize, dycore_only, debug, ccpp_suite, ic_filename, lbc_filename, &
-       regional, stream_list_history, stream_list_restart, stream_list_diag
+  namelist /atmos_model_nml/ blocksize, dycore_only, debug, ccpp_suite, ic_filename,          &
+       lbc_filename, regional, stream_list_history, stream_list_restart, stream_list_diag
 
   ! Component Timers
   real(MPAS_kind_phys) :: setupClock, atmiClock, radClock, physClock,mpasClock, mpClock, outClock
@@ -115,7 +115,7 @@ contains
     logical :: file_exists
     real(MPAS_kind_phys) :: start_time, stop_time
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_init'
-    write(*,*) 'atmos_model_init_1'    
+
     ! Start timer for this procedure (init).
     start_time = MPI_Wtime()
 
@@ -215,7 +215,7 @@ contains
     ! Read in MPAS Stream_list file(s) (master processor only in ufs_mpas_read_stream_lists)
     !
     call ufs_mpas_read_stream_lists(Cfg%me, Cfg%master, Cfg%mpi_comm)
-    write(*,*) 'atmos_model_init 2'
+
     !> #########################################################################################
     !> #########################################################################################
     !> END MPAS DYCORE INITIALIZATION
@@ -257,31 +257,22 @@ contains
     Cfg%fn_nml = nml_filename
     call MPAS_initialize(UFSATM_control, UFSATM_intdiag, UFSATM_grid, UFSATM_tbd, UFSATM_sfcprop, &
          UFSATM_statein, UFSATM_stateout, UFSATM_cldprop, UFSATM_radtend, UFSATM_coupling, Cfg)
-    write(*,*) 'atmos_model_init 3'
-    call ufs_mpas_grid_to_physics(UFSATM_grid)
 
     ! Populate UFSATM data containers with MPAS "input" stream. We need to do this becuase
     ! we are calling the physics before the MPAS dynamical core.
     !
-    ! DJS to GJF: See fcst_run_phase_1 in module_fcst_grid_comp.F90. That is where we call the
-    ! "pieces" of the Atmospheric timestep defined below.
-    ! Since we are calling the radiation/physics first, we need to take the MPAS Initial state
-    ! and map it to the physics data containers (e.g. Typdefs). We will use a similar routine
-    ! in a different "piece" later, but copying the Updated state from the dycore before calling
-    ! the microphsyics.
-    write(*,*) 'atmos_model_init 4'
+    call ufs_mpas_grid_to_physics(UFSATM_grid)
     !call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
-    write(*,*) 'atmos_model_init 5'
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
-    write(*,*) 'atmos_model_init 6'
+
     ! Initialize the CCPP framework
     call CCPP_step (step="init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP init step failed",messageType=MPAS_LOG_CRIT)
-    write(*,*) 'atmos_model_init 7'
+
     ! Initialize the CCPP physics
     call CCPP_step (step="physics_init", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP physics_init step failed",messageType=MPAS_LOG_CRIT)
-    write(*,*) 'atmos_model_init 8'
+
     ! Initialize stochastic physics pattern generation / cellular automata
     ! NOT YET IMPLEMENTED
 
@@ -329,6 +320,7 @@ contains
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_physics_to_mpas
+    use atmos_coupling_mod,     only : ufs_mpas_phys_diag
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
@@ -348,12 +340,6 @@ contains
     ! Call CCPP Radiation Group
     start_time = MPI_Wtime()
     if (UFSATM_control%lsswr .or. UFSATM_control%lslwr) then
-       ! DJS to GJF: If you un comment this line, you will get an error in the RRTMG radiation.
-       ! Needless to say, I didn't see why, but I assume it is due to one of the many instances
-       ! that we will need to identify as being FV3/MPAS specifc. Mostly in the Typedefs I suspect,
-       ! but there may be interstitial schemes (NOTE that I added an new MPAS specific interstital file
-       ! already, GFS_rad_time_vary.mpas.F90. I don't think it is complete.
-       ! 
        call CCPP_step (step="radiation", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
        if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP radiation step failed",messageType=MPAS_LOG_CRIT)
     endif
@@ -361,12 +347,14 @@ contains
     radClock = radClock + (stop_time - start_time)
 
     ! Call CCPP Physics Group
-    ! NOT YET IMPLEMENTED in SDF
     start_time = MPI_Wtime()
     call CCPP_step (step="physics", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP physics step failed",messageType=MPAS_LOG_CRIT)
     stop_time = MPI_Wtime()
     physClock = physClock + (stop_time - start_time)
+
+    ! Populate MPAS pools with physics data (for diagnostics).
+    call ufs_mpas_phys_diag(UFSATM_radtend)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_physics_to_mpas(UFSATM_control, UFSATM_stateout)
@@ -480,7 +468,7 @@ contains
     is_water_species(:) = .false.
     open(newunit=funit,file=trim(fname),status='unknown')
     do itracer=1,ntracers
-       read(funit, "(a10,a,a40,a,a10,a,i1)",iostat=status) tracer_name,c1,tracer_long_name,c2,tracer_unit,c3,tracer_type
+       read(funit, "(a10,a,a51,a,a10,a,i1)",iostat=status) tracer_name,c1,tracer_long_name,c2,tracer_unit,c3,tracer_type
        constituent_name(itracer) = tracer_name
        if (tracer_type == 0) then
           is_water_species(itracer) = .true.
