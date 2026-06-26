@@ -8,8 +8,6 @@ module atmos_coupling_mod
   use ufs_mpas_io,     only : domain_ptr
   
   implicit none
-  public :: MPAS_statein_type
-  public :: MPAS_stateout_type
   public :: ufs_physics_to_mpas
   public :: ufs_mpas_to_physics
   public :: ufs_microphysics_to_mpas
@@ -18,85 +16,12 @@ module atmos_coupling_mod
   public :: ufs_mpas_sfc_to_physics
 
   !> #######################################################################################
-  !> MPAS_statein_type
-  !> Fields needed by the MPAS dynamical core for forward integration.
+  !> MPAS_state_type (internal use only)
+  !>
+  !> Contains fields prognosed (or diagnosed) by the MPAS dynamical core.
   !>
   !> #######################################################################################
-  type MPAS_statein_type
-     ! Dimensions
-     integer, pointer :: nCells                   ! Number of cells, including halo cells
-     integer, pointer :: nEdges                   ! Number of edges, including halo edges
-     integer, pointer :: nVertices                ! Number of vertices, including halo vertices
-     integer, pointer :: nVertLevels              ! Number of vertical layers
-     !
-     integer, pointer :: nCellsSolve              ! Number of cells, excluding halo cells
-     integer, pointer :: nEdgesSolve              ! Number of edges, excluding halo edges
-     integer, pointer :: nVerticesSolve           ! Number of vertices, excluding halo vertices
-
-     ! MPAS vertical coordiante (invariant)
-     real(mpas_kind), pointer :: zgrid(:,:)       ! Geometric height [m]  at layer interfaces (nlev+1,ncol)
-     real(mpas_kind), pointer :: zz(:,:)          ! Vertical coordinate metric [1] at layer
-                                                  ! midpoints (nlev,ncol)
-     real(mpas_kind), pointer :: fzm(:)           ! Interp weight from k layer midpoint to k
-                                                  ! layer interface [1] (nlev)
-     real(mpas_kind), pointer :: fzp(:)           ! Interp weight from k-1 layer midpoint to k
-                                                  ! layer interface [dimensionless] (nlev)
-     ! Cell area (invariant)
-     real(mpas_kind), pointer :: areaCell(:)      ! cell area [m^2]
-
-     ! For edge-normal velocity calculations (invariant)
-     real(mpas_kind), pointer :: east(:,:)        ! Cartesian components of unit east vector
-                                                  ! at cell centers [dimensionless]       (3,ncol)
-     real(mpas_kind), pointer :: north(:,:)       ! Cartesian components of unit north vector
-                                                  ! at cell centers [dimensionless]       (3,ncol)
-     real(mpas_kind), pointer :: normal(:,:)      ! Cartesian components of the vector normal
-                                                  ! to an edge and tangential to the surface
-                                                  ! of the sphere [dimensionless]         (3,ncol)
-     integer, pointer :: cellsOnEdge(:,:)         ! Indices of cells separated by an edge (2,nedge)
-
-     ! Indices for tracer (scalar) indices
-     integer, pointer  :: index_qv                ! Tracer index for water-vapor mixing-ratio
-
-     ! Base state variables
-     real(mpas_kind), pointer :: rho_base(:,:)    ! Base-state dry air density [kg/m^3]  (nlev,ncol)
-     real(mpas_kind), pointer :: theta_base(:,:)  ! Base-state potential temperature [K] (nlev,ncol)
-
-     ! State that is directly prognosed by the dycore
-     real(mpas_kind), pointer :: uperp(:,:)       ! Normal velocity at edges [m/s]  (nlev  ,nedge)
-     real(mpas_kind), pointer :: w(:,:)           ! Vertical velocity [m/s]         (nlev+1,ncol)
-     real(mpas_kind), pointer :: theta_m(:,:)     ! Moist potential temperature [K] (nlev  ,ncol)
-     real(mpas_kind), pointer :: rho_zz(:,:)      ! Dry density [kg/m^3]
-                                                  ! divided by d(zeta)/dz            (nlev ,ncol)
-     real(mpas_kind), pointer :: tracers(:,:,:)   ! Tracers [kg/kg dry air]       (nq,nlev ,ncol)
-     
-     ! State that may be directly derived from dycore prognostic state
-     real(mpas_kind), pointer :: theta(:,:)       ! Potential temperature [K]        (nlev,ncol)
-     real(mpas_kind), pointer :: exner(:,:)       ! Exner function [-]               (nlev,ncol)
-     real(mpas_kind), pointer :: rho(:,:)         ! Dry density [kg/m^3]             (nlev,ncol)
-     real(mpas_kind), pointer :: ux(:,:)          ! Zonal veloc at center [m/s]      (nlev,ncol)
-     real(mpas_kind), pointer :: uy(:,:)          ! Meridional veloc at center [m/s] (nlev,ncol)
-
-     ! Tendencies from physics
-     real(mpas_kind), pointer :: ru_tend(:,:)     ! Normal horizontal momentum tendency
-                                                  ! from physics [kg/m^2/s]          (nlev,nedge)
-     real(mpas_kind), pointer :: rtheta_tend(:,:) ! Tendency of rho*theta/zz
-                                                  ! from physics [kg K/m^3/s]        (nlev,ncol)
-     real(mpas_kind), pointer :: rho_tend(:,:)    ! Dry air density tendency
-                                                  ! from physics [kg/m^3/s]          (nlev,ncol)
-
-     ! Diagnostics
-     real(mpas_kind), pointer :: pressure_b(:,:)
-     real(mpas_kind), pointer :: pressure_p(:,:)
-     real(mpas_kind), pointer :: surface_pressure(:)
-
-  end type MPAS_statein_type
-
-  !> #######################################################################################
-  !> MPAS_stateout_type
-  !> Fields prognosed (or diagnosed) by the MPAS dynamical core.
-  !>
-  !> #######################################################################################
-    type MPAS_stateout_type
+    type MPAS_state_type
      ! Dimensions
      integer, pointer :: nCells                   ! Number of cells, including halo cells
      integer, pointer :: nEdges                   ! Number of edges, including halo edges
@@ -147,12 +72,12 @@ module atmos_coupling_mod
      real(mpas_kind), pointer :: pressure_p(:,:)
      real(mpas_kind), pointer :: surface_pressure(:)
 
-  end type MPAS_stateout_type
+  end type MPAS_state_type
   
 contains
   !> #########################################################################################
-  !> Procedure to convert input "MPAS" variables to "CCPP" variables.
-  !> Called prior to MPAS dynamical core (initial-step only).
+  !> Procedure to populate CCPP data containers with MPAS pool data.
+  !> Called BEFORE CCPP Radiation and Physics Groups.
   !>
   !> Analogous to MPAS_to_physics in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
@@ -173,7 +98,7 @@ contains
     type(GFS_statein_type),   intent(inout) :: physics_state
     type(GFS_sfcprop_type),   intent(inout) :: surface_state
     ! Locals
-    type(mpas_stateout_type) :: mpas_state
+    type(mpas_state_type) :: mpas_state
     type(mpas_pool_type), pointer :: state_pool
     type(mpas_pool_type), pointer :: diag_pool
     type(mpas_pool_type), pointer :: mesh_pool
@@ -257,7 +182,6 @@ contains
        end do
     end do
 
-
     ! Compute hydrostatic pressures
     allocate(MPAS_state % pmid(   nVertLevels,   nCellsSolve))
     allocate(MPAS_state % pmiddry(nVertLevels,   nCellsSolve))
@@ -284,26 +208,26 @@ contains
   end subroutine ufs_mpas_to_physics
 
   !> #########################################################################################
-  !> Procedure to update state with physics tendencies prior to calling MPAS dynamical core.
-  !> 
-  !> - Aggregate all scheme tendencies (tend_th_phys)
+  !> Procedure to update MPAS state with physics (CCPP) tendencies.
+  !> Called AFTER physics, BEFORE calling dynamics (current timestep).
+  !>
   !> - Convert from theta to theta_m (tend_theta_phys)
-  !> - Update dynamic tendencies. (tend_theta_dyn = tend_theta_dyn + tend_theta_phys)
+  !> - Update dynamic tendencies. (tend_theta_dyn)
+  !> - Update scalar tendencies (tend_scalars_dyn)
   !>
   !> Analogous to phys_get_tend in physics/mpas_atmphys_todynamics.F
-  !> Instead of updating the state with physics tendencies from the MPAS "tend_pool", we
-  !> will use tendencies from the CCPP Physics.
+  !> Here, instead of updating the state with physics tendencies from the MPAS "tend_pool", we
+  !> will use tendencies from the CCPP Physics data containers.
   !>
   !> #########################################################################################
-  subroutine ufs_physics_to_mpas(statein, control, stateout)
-    use GFS_typedefs,       only : GFS_statein_type, GFS_stateout_type, GFS_control_type
+  subroutine ufs_physics_to_mpas(control, physics_state)
+    use GFS_typedefs,       only : GFS_stateout_type, GFS_control_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use mpas_kind_types,    only : RKIND
     use mpas_constants,     only : rv, rgas, gravity
     ! Arguments
-    type(GFS_statein_type),  intent(in) :: statein
-    type(GFS_stateout_type), intent(in) :: stateout
+    type(GFS_stateout_type), intent(in) :: physics_state
     type(GFS_control_type),  intent(in) :: control
     ! Locals
     type(mpas_pool_type),               pointer :: state_pool
@@ -317,8 +241,8 @@ contains
     real(kind=RKIND), dimension(:),     pointer :: surface_pressure
     real(kind=RKIND), dimension(:,:),   pointer :: zgrid
     real(kind=RKIND), dimension(:,:),   pointer :: zz
-    real(kind=RKIND), dimension(:,:),     pointer :: pressure_b
-    real(kind=RKIND), dimension(:,:),     pointer :: pressure_p
+    real(kind=RKIND), dimension(:,:),   pointer :: pressure_b
+    real(kind=RKIND), dimension(:,:),   pointer :: pressure_p
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_th_phys
     real(kind=RKIND), dimension(:,:),   allocatable :: tend_theta_phys
     real(kind=RKIND), dimension(:,:,:), allocatable :: tend_scalars_phys
@@ -377,8 +301,6 @@ contains
     tend_theta_phys(:,:)     = 0._RKIND
     tend_scalars_phys(:,:,:) = 0._RKIND
 
-    ! GJF: Add microphysics heating (from last timestep) to tend_th_phys
-
     ! GJF: Add accumulated tendencies from the physics group
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
@@ -393,7 +315,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
+            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -403,7 +325,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
+            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -413,7 +335,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
+            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -423,7 +345,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
+            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -433,7 +355,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
+            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -443,7 +365,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + stateout%dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
+            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -453,7 +375,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + stateout%dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
+            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -463,7 +385,7 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + stateout%dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
+            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
           end do
         end do
       end do
@@ -473,34 +395,11 @@ contains
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + stateout%dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
+            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
-
-
-    ! Longwave radiation: [i, k] -> [k, i]
-    ! do ithread = 1,nThreads
-    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-    !       do iLay = 1,nVertLevels
-    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrlw(iCol,iLay)*mass(iLay,iCol)
-    !       end do
-    !    end do
-    ! end do
-
-    ! Shortwave radiation: [i, k] -> [k, i]
-    ! do ithread = 1,nThreads
-    !    do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-    !       do iLay = 1,nVertLevels
-    !          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + radiation%htrsw(iCol,iLay)*mass(iLay,iCol)
-    !       end do
-    !    end do
-    ! end do
-
-    ! Convection: [i, k] -> [k, i]
-
-    ! PBL: [i, k] -> [k, i]
 
     ! Convert from potential temperature to modified potential temperature (theta -> theta_m)
     do ithread = 1,nThreads
@@ -538,7 +437,7 @@ contains
     deallocate(tend_th_phys)
     deallocate(tend_theta_phys)
     deallocate(tend_scalars_phys)
-
+    
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
     do iCol = 1, nCellsSolve
@@ -559,13 +458,8 @@ contains
   end subroutine ufs_physics_to_mpas
 
   !> #########################################################################################
-  !> Procedure to convert of output "CCPP" variables to "MPAS" variables
-  !> Called prior to MPAS dynamical core (integration)
-  !>
-  !> This procedure updates the MPAS "state" using prognosed physics/microphysics variables. 
-  !> Note that mpas_pool_shift_time_levels() has been called in ufs_mpas_subdriver/ufs_mpas_run() 
-  !> so that timelevel=1 contains the after-dynamics state already. We're updating it the 
-  !> timelevel=1 state here.
+  !> Procedure to compute diabatic heating tendency from microphysics and store in MPAS pool.
+  !> Called AFTER microphysics, BEFORE calling dynamics (next timestep)
   !>
   !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
@@ -573,7 +467,8 @@ contains
   subroutine ufs_microphysics_to_mpas(physics_state, control)
     use GFS_typedefs,       only : GFS_stateout_type, GFS_control_type
     use mpas_derived_types, only : mpas_pool_type
-    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension, mpas_pool_get_config
+    use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array
+    use mpas_pool_routines, only : mpas_pool_get_dimension, mpas_pool_get_config
     use mpas_constants,     only : gravity, rvord
     use mpas_kind_types,    only : RKIND
 
@@ -581,7 +476,7 @@ contains
     type(GFS_stateout_type),     intent(in   ) :: physics_state
     type(GFS_control_type),      intent(in   ) :: control
     ! Locals
-    type(mpas_stateout_type) :: mpas_state
+    type(mpas_state_type) :: mpas_state
     type(mpas_pool_type), pointer :: diag_pool
     type(mpas_pool_type), pointer :: mesh_pool
     type(mpas_pool_type), pointer :: state_pool
@@ -642,10 +537,6 @@ contains
       end do
     end do
 
-    ! [i, k] -> [k, i]
-    ! top-down -> bottom-up ordering convention
-    ! Thermodynamic conversions from moist (CCPP) to dry (MPAS)
-
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
     do ithread = 1,nThreads
@@ -670,8 +561,8 @@ contains
   end subroutine ufs_microphysics_to_mpas
 
   !> #########################################################################################
-  !> Procedure to convert of "MPAS" variables to "CCPP" variables.
-  !> Called prior to CCPP Microphysics Group.
+  !> Procedure to update physics (CCPP) state using updated MPAS state.
+  !> Called AFTER dynamics, BEFORE microphysics.
   !> 
   !> Analogous to microphysics_from_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
@@ -694,7 +585,7 @@ contains
     integer, pointer :: nCellsSolve, num_scalars, nwat, nVertLevels, index_qv
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
 
-    type(mpas_stateout_type) :: mpas_state
+    type(mpas_state_type) :: mpas_state
 
     type(mpas_pool_type),               pointer :: state_pool
     type(mpas_pool_type),               pointer :: diag_pool
@@ -730,7 +621,8 @@ contains
     nullify(mesh_pool)
     nullify(state_pool)
 
-    !GJF: remove microphysics heating from state before calling microphysics - this is already done in mpas_atm_time_integration.F/atm_recover_large_step_variables_work line 3317
+    ! GJF: Remove microphysics heating from state before calling microphysics. This is done
+    ! at line 3317 of mpas_atm_time_integration.F/atm_recover_large_step_variables_work.
  
   end subroutine ufs_mpas_to_microphysics
 
