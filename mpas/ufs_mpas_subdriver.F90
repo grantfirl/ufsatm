@@ -694,7 +694,7 @@ contains
 
     ! Output stream
     if (timeStop .EQ. mpas_output_times(out_file_index)) then
-       call ufs_mpas_write("output", timeStampOutFile, debug)
+       call ufs_mpas_write("output+diag_phys", timeStampOutFile, debug)
        out_file_index = out_file_index + 1
     end if
 

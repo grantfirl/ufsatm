@@ -77,8 +77,6 @@ module ufs_mpas_io
        var_info_type('bdyMaskEdge'                     , 'integer'   , 1), &
        var_info_type('bdyMaskVertex'                   , 'integer'   , 1), &
        var_info_type('cellTangentPlane'                , 'real'      , 3), &
-       var_info_type('cell_gradient_coef_x'            , 'real'      , 2), &
-       var_info_type('cell_gradient_coef_y'            , 'real'      , 2), &
        var_info_type('cellsOnCell'                     , 'integer'   , 2), &
        var_info_type('cellsOnEdge'                     , 'integer'   , 2), &
        var_info_type('cellsOnVertex'                   , 'integer'   , 2), &
@@ -219,7 +217,6 @@ module ufs_mpas_io
        var_info_type('snoalb'                          , 'real'      , 1), &
        var_info_type('greenfrac'                       , 'real'      , 2), &
        var_info_type('albedo12m'                       , 'real'      , 2), &
-       var_info_type('soilcomp'                        , 'real'      , 2), &
        var_info_type('soilcl1'                         , 'real'      , 1), &
        var_info_type('soilcl2'                         , 'real'      , 1), &
        var_info_type('soilcl3'                         , 'real'      , 1), &
@@ -289,7 +286,30 @@ module ufs_mpas_io
        var_info_type('w'                               , 'real'      , 2), &
        var_info_type('zz'                              , 'real'      , 2)  &
     ]
-  
+
+  !> #########################################################################################
+  !> This list contains radiation diagnostics.
+  !> It consists of variables that are members of the MPAS "diag_phys" structure.
+  !> For the UWM, we include these diagnostics in the MPAS "output" stream.
+  !> #########################################################################################
+  type(var_info_type), parameter :: diag_phys_var_info_list(*) = [ &
+       var_info_type('swdnb'                           , 'real'      , 1), &
+       var_info_type('swdnbc'                          , 'real'      , 1), &
+       var_info_type('swdnt'                           , 'real'      , 1), &
+       var_info_type('swdntc'                          , 'real'      , 1), &
+       var_info_type('swupb'                           , 'real'      , 1), &
+       var_info_type('swupbc'                          , 'real'      , 1), &
+       var_info_type('swupt'                           , 'real'      , 1), &
+       var_info_type('swuptc'                          , 'real'      , 1), &
+       var_info_type('lwdnb'                           , 'real'      , 1), &
+       var_info_type('lwdnbc'                          , 'real'      , 1), &
+       var_info_type('lwdnt'                           , 'real'      , 1), &
+       var_info_type('lwdntc'                          , 'real'      , 1), &
+       var_info_type('lwupb'                           , 'real'      , 1), &
+       var_info_type('lwupbc'                          , 'real'      , 1), &
+       var_info_type('lwupt'                           , 'real'      , 1), &
+       var_info_type('lwuptc'                          , 'real'      , 1)  &
+    ]
 contains
 
   !> #########################################################################################
@@ -512,13 +532,17 @@ contains
 
     if (trim(stream_name) == "output") then
        filename = 'history.'//trim(timestamp)//'.nc'
+    else if (trim(stream_name) == "output+diag_phys") then
+       filename = 'history.'//trim(timestamp)//'.nc'
     else if (trim(stream_name) == "restart") then
        filename = 'restart.'//trim(timestamp)//'.nc'
     else if (trim(stream_name) == "input") then
        filename = 'input.'//trim(timestamp)//'.nc'
+    else if (trim(stream_name) == "diag_phys") then
+       filename = 'diag_phys.'//trim(timestamp)//'.nc'
     else
-       call mpas_log_write(subname // " Invalid stream_name to ufs_mpas_write: stream_name ="// &
-                           trim(stream_name), messageType=MPAS_LOG_CRIT)
+       stop "Invalid stream_name to ufs_mpas_write: stream_name =" &
+            //trim(stream_name)
     end if
 
     if (debug) call mpas_log_write(subname // " entering ufs_mpas_write")
@@ -1660,6 +1684,8 @@ contains
       allocate(var_info_list, source=sfc_input_var_info_list)
    case ('ugwp_oro_data')
       allocate(var_info_list, source=ugwp_oro_data_var_info_list)
+   case ('diag_phys')
+      allocate(var_info_list, source=diag_phys_var_info_list)
    case default
       allocate(var_info_list(0))
 
@@ -1695,6 +1721,13 @@ contains
 
       if (any(var_name_list == trim(adjustl(stream_name_fragment)))) then
          var_info_list_buffer = pack(lbc_in_var_info_list, var_name_list == trim(adjustl(stream_name_fragment)))
+         var_info_list = [var_info_list, var_info_list_buffer]
+      end if
+
+      var_name_list = diag_phys_var_info_list % name
+
+      if (any(var_name_list == trim(adjustl(stream_name_fragment)))) then
+         var_info_list_buffer = pack(diag_phys_var_info_list, var_name_list == trim(adjustl(stream_name_fragment)))
          var_info_list = [var_info_list, var_info_list_buffer]
       end if
    end select

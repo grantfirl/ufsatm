@@ -305,8 +305,8 @@ contains
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels 
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (physics_state%dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
-          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + physics_state%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (physics_state % dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
+          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         end do
       end do
     end do
@@ -871,5 +871,55 @@ contains
     end do
 
   end subroutine ufs_mpas_sfc_to_physics
-  
+
+  !> #########################################################################################
+  !> Procedure to populate MPAS diag_phys pool with CCPP data.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_phys_diag(radiation)
+    use GFS_typedefs,         only : GFS_radtend_type
+    use mpas_kind_types,      only : RKIND
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
+    ! Arguments
+    type(GFS_radtend_type), intent(in) :: radiation
+    ! Locals
+    type(mpas_pool_type), pointer :: diag_phys
+    real(RKIND),dimension(:),pointer :: swdnb,swdnbc,swupb,swupbc
+    real(RKIND),dimension(:),pointer :: lwdnb,lwdnbc,lwupb,lwupbc
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    integer :: iCol, ithread
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    ! Access MPAS data pools.
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics',  diag_phys)
+
+    ! Grab fields from MPAS pools
+    call mpas_pool_get_array(diag_phys,'swdnb'     , swdnb     )
+    call mpas_pool_get_array(diag_phys,'swdnbc'    , swdnbc    )
+    call mpas_pool_get_array(diag_phys,'swupb'     , swupb     )
+    call mpas_pool_get_array(diag_phys,'swupbc'    , swupbc    )
+    call mpas_pool_get_array(diag_phys,'lwdnb'     , lwdnb     )
+    call mpas_pool_get_array(diag_phys,'lwdnbc'    , lwdnbc    )
+    call mpas_pool_get_array(diag_phys,'lwupb'     , lwupb     )
+    call mpas_pool_get_array(diag_phys,'lwupbc'    , lwupbc    )
+
+    ! Surface fluxes
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          swdnb(iCol)  = radiation%sfcfsw(iCol)%dnfxc
+          swdnbc(iCol) = radiation%sfcfsw(iCol)%dnfx0
+          swupb(iCol)  = radiation%sfcfsw(iCol)%upfxc
+          swupbc(iCol) = radiation%sfcfsw(iCol)%upfx0
+          lwdnb(iCol)  = radiation%sfcflw(iCol)%dnfxc
+          lwdnbc(iCol) = radiation%sfcflw(iCol)%dnfx0
+          lwupb(iCol)  = radiation%sfcflw(iCol)%upfxc
+          lwupbc(iCol) = radiation%sfcflw(iCol)%upfx0
+       end do
+    end do
+  end subroutine ufs_mpas_phys_diag  
 end module atmos_coupling_mod
