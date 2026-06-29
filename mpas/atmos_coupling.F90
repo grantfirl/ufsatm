@@ -440,15 +440,17 @@ contains
     
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
-    do iCol = 1, nCellsSolve
-       tem1 = zgrid(2,iCol) - zgrid(1,iCol)
-       tem2 = zgrid(3,iCol) - zgrid(2,iCol)
-       rho1 = mass(1,iCol) * zz(1,iCol) * (1. + scalars(index_qv,1,iCol))
-       rho2 = mass(2,iCol) * zz(2,iCol) * (1. + scalars(index_qv,2,iCol))
-       surface_pressure(iCol) = 0.5*gravity*( zgrid(2,iCol) -  zgrid(1,iCol)) &
+    do ithread = 1,nThreads
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        tem1 = zgrid(2,iCol) - zgrid(1,iCol)
+        tem2 = zgrid(3,iCol) - zgrid(2,iCol)
+        rho1 = mass(1,iCol) * zz(1,iCol) * (1. + scalars(index_qv,1,iCol))
+        rho2 = mass(2,iCol) * zz(2,iCol) * (1. + scalars(index_qv,2,iCol))
+        surface_pressure(iCol) = 0.5*gravity*( zgrid(2,iCol) -  zgrid(1,iCol)) &
             * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
-       surface_pressure(iCol) = surface_pressure(iCol) + pressure_p(1,iCol) + &
+        surface_pressure(iCol) = surface_pressure(iCol) + pressure_p(1,iCol) + &
                                 pressure_b(1,iCol)
+      enddo
     enddo
 
     ! Housekeeping
