@@ -305,8 +305,8 @@ contains
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels 
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (stateout%dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
-          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + stateout%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (physics_state%dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
+          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + physics_state%dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         end do
       end do
     end do
