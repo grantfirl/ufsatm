@@ -480,7 +480,7 @@ contains
     is_water_species(:) = .false.
     open(newunit=funit,file=trim(fname),status='unknown')
     do itracer=1,ntracers
-       read(funit, "(a10,a,a40,a,a10,a,i1)",iostat=status) tracer_name,c1,tracer_long_name,c2,tracer_unit,c3,tracer_type
+       read(funit, "(a10,a,a51,a,a10,a,i1)",iostat=status) tracer_name,c1,tracer_long_name,c2,tracer_unit,c3,tracer_type
        constituent_name(itracer) = tracer_name
        if (tracer_type == 0) then
           is_water_species(itracer) = .true.
