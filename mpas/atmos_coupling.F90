@@ -560,7 +560,7 @@ contains
           MPAS_state % exner(iLay,iCol) = (MPAS_state % zz(iLay,iCol)*(rgas/P0)*(rtheta_p(iLay,iCol)+rtheta_b(iLay,iCol)))**(rgas/cv)
 
           !pertubation pressure:
-          pressure_p(iLay,iCol) = MPAS_state % zz(iLay,iCol)*rgas*(MPAS_state % exner(iLay,iCol)*rtheta_p(iLay,iCol) &
+          MPAS_state % pressure_p(iLay,iCol) = MPAS_state % zz(iLay,iCol)*rgas*(MPAS_state % exner(iLay,iCol)*rtheta_p(iLay,iCol) &
                           + (MPAS_state % exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
         end do
       end do
