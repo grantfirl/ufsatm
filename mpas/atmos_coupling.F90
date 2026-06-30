@@ -136,7 +136,7 @@ contains
     call mpas_pool_get_array(diag_pool,  'uReconstructZonal',      MPAS_state % ux)
     call mpas_pool_get_array(diag_pool,  'uReconstructMeridional', MPAS_state % uy)
     call mpas_pool_get_array(state_pool, 'scalars',                MPAS_state % tracers, timeLevel=1)
-    call mpas_pool_get_array(state_pool, 'w',                      MPAS_state % w, timeLevel=1)
+    call mpas_pool_get_array(state_pool, 'w',                      MPAS_state % w,       timeLevel=1)
     call mpas_pool_get_array(diag_pool,  'exner',                  MPAS_state % exner)
     call mpas_pool_get_array(mesh_pool,  'zgrid',                  MPAS_state % zgrid)
     call mpas_pool_get_array(mesh_pool,  'zz',                     MPAS_state % zz)
@@ -284,7 +284,7 @@ contains
     ! Grab fields from MPAS pools
     call mpas_pool_get_array(state_pool,'theta_m' ,theta_m,1)
     call mpas_pool_get_array(state_pool,'scalars' ,scalars,1)
-    call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,2   )
+    call mpas_pool_get_array(state_pool,'rho_zz'  ,mass,   1)
     call mpas_pool_get_array(diag_pool, 'exner'   ,exner)
     call mpas_pool_get_array(mesh_pool, 'zz'      ,zz)
     call mpas_pool_get_array(diag_pool, 'surface_pressure', surface_pressure)
@@ -471,7 +471,7 @@ contains
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array
     use mpas_pool_routines, only : mpas_pool_get_dimension, mpas_pool_get_config
-    use mpas_constants,     only : gravity, rvord
+    use mpas_constants,     only : gravity, rvord, rgas, p0, cv
     use mpas_kind_types,    only : RKIND
 
     ! Arguments
@@ -485,9 +485,12 @@ contains
     type(mpas_pool_type), pointer :: tend_pool
     integer, pointer :: nCellsSolve, index_qv, num_scalars, nVertLevels
     integer :: iCol, ithread, iLay, iTracer
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, theta_m_dyn, theta_dyn, sfc_pressure_dyn
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), dimension(:,:), pointer :: rt_diabatic_tend
+    real(kind=RKIND), dimension(:,:), pointer :: dtheta_dt_mp
+    real(kind=RKIND), dimension(:,:), pointer :: rtheta_p,rtheta_b,exner_b
+    real(kind=RKIND), dimension(:),   pointer :: tend_sfc_pressure
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
 
     ! Get openMP information
@@ -518,23 +521,47 @@ contains
     call mpas_pool_get_array(diag_pool,  'pressure_p',             MPAS_state % pressure_p)
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       MPAS_state % surface_pressure)
     call mpas_pool_get_array(diag_pool,  'exner',                  MPAS_state % exner)
+    call mpas_pool_get_array(diag_pool,  'exner_base',             exner_b)
     call mpas_pool_get_array(diag_pool,  'theta',                  MPAS_state % theta)
     call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=1)
+    call mpas_pool_get_array(diag_pool,  'rtheta_base',            rtheta_b)
+    call mpas_pool_get_array(diag_pool,  'rtheta_p',               rtheta_p)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend',       rt_diabatic_tend)
+    call mpas_pool_get_array(diag_pool,  'dtheta_dt_mp',           dtheta_dt_mp)
+    call mpas_pool_get_array(tend_pool,  'tend_sfc_pressure',      tend_sfc_pressure)
     
     !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
-    ! update the state variables here. Also, we need to save the microphysics heating rate to be applied (again?)
-    ! before
+    ! update the state variables here. Also, we need to save the microphysics heating rate to be used again during the next timestep
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
+          !save theta_m and theta straight from dynamics
+          theta_m_dyn = MPAS_state % theta_m(iLay,iCol)
+          coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
+          theta_dyn = theta_m_dyn/coeff
+          
+          !Apply tendencies
           do iTracer = 1,num_scalars
             MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer)
           end do
           MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-          rt_diabatic_tend(iLay,iCol) = (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+          !recalculate virtual temperature coefficient with updated state
           coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
           MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
+          
+          !rt_diabatic_tend is expected to be in terms of theta_m (see mpas_atmphys_interface/microphysics_to_MPAS)
+          rt_diabatic_tend(iLay,iCol) = (MPAS_state % theta_m(iLay,iCol) - theta_m_dyn) / config_dt
+          dtheta_dt_mp(iLay,iCol) =  (MPAS_state % theta(iLay,iCol) - theta_dyn) / config_dt
+          
+          !density-weighted perturbation potential temperature:
+          rtheta_p(iLay,iCol) = MPAS_state % rho_zz(iLay,iCol) * MPAS_state % theta_m(iLay,iCol) - rtheta_b(iLay,iCol)
+          
+          !exner function:
+          MPAS_state % exner(iLay,iCol) = (MPAS_state % zz(iLay,iCol)*(rgas/P0)*(rtheta_p(iLay,iCol)+rtheta_b(iLay,iCol)))**(rgas/cv)
+
+          !pertubation pressure:
+          pressure_p(iLay,iCol) = MPAS_state % zz(iLay,iCol)*rgas*(MPAS_state % exner(iLay,iCol)*rtheta_p(iLay,iCol) &
+                          + (MPAS_state % exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
         end do
       end do
     end do
@@ -547,11 +574,13 @@ contains
           tem2 = MPAS_state % zgrid(3,iCol) - MPAS_state % zgrid(2,iCol)
           rho1 = MPAS_state % rho_zz(1,iCol) * MPAS_state % zz(1,iCol) * (1. + MPAS_state % tracers(index_qv,1,iCol))
           rho2 = MPAS_state % rho_zz(2,iCol) * MPAS_state % zz(2,iCol) * (1. + MPAS_state % tracers(index_qv,2,iCol))
+          sfc_pressure_dyn = MPAS_state % surface_pressure(iCol)
           MPAS_state % surface_pressure(iCol) = 0.5*gravity*(MPAS_state % zgrid(2,iCol) - MPAS_state % zgrid(1,iCol)) &
                * (rho1 - 0.5*(rho2-rho1)*tem1/(tem1+tem2))
           MPAS_state % surface_pressure(iCol) = MPAS_state % surface_pressure(iCol) + &
                                                 MPAS_state % pressure_p(1,iCol) + &
                                                 MPAS_state % pressure_b(1,iCol)
+          tend_sfc_pressure(iCol) = (MPAS_state % surface_pressure(iCol) - sfc_pressure_dyn) / config_dt
        end do
     end do
 
