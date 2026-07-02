@@ -483,7 +483,7 @@ contains
     type(mpas_pool_type), pointer :: mesh_pool
     type(mpas_pool_type), pointer :: state_pool
     type(mpas_pool_type), pointer :: tend_pool
-    integer, pointer :: nCellsSolve, index_qv, num_scalars, nVertLevels
+    integer, pointer :: nCellsSolve, index_qv, index_qc, index_qr, num_scalars, nVertLevels
     integer :: iCol, ithread, iLay, iTracer
     real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff
     real(kind=RKIND), pointer :: config_dt
@@ -506,6 +506,8 @@ contains
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
+    call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
@@ -522,24 +524,23 @@ contains
     call mpas_pool_get_array(state_pool, 'theta_m',                MPAS_state % theta_m, timeLevel=1)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend',       rt_diabatic_tend)
     
-    !GJF: The MPAS version of microphysics schemes update the state internally; for CCPP/UFS, we will need to
-    ! update the state variables here. Also, we need to save the microphysics heating rate to be applied (again?)
-    ! before
-    ! DJS: This isn't working. Make sure same as in MPAS code.
-    ! DJS: With this commented out, the MP enabled forecasts run.
-!    do ithread=1,nThreads
-!      do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-!        do iLay = 1,nVertLevels
-!          do iTracer = 1,num_scalars
-!            MPAS_state % tracers(iTracer,iLay,iCol) = MPAS_state % tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer)
-!          end do
-!          MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-!          rt_diabatic_tend(iLay,iCol) = (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
-!          coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
-!          MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
-!        end do
-!      end do
-!    end do
+    ! The MPAS version of microphysics schemes update the state within the dynamics;
+    ! for CCPP/UFS, we will need to update the state variables here for use by the dynamics.
+    ! Also, Update water vapor, cloud liquid water, rain mixing ratios, modified potential temperature,
+    ! and potential temperature heating rate from microphysics
+    do ithread=1,nThreads
+      do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        do iLay = 1,nVertLevels
+          MPAS_state % tracers(index_qv,iLay,iCol) = MPAS_state % tracers(index_qv,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,index_qv)
+          MPAS_state % tracers(index_qc,iLay,iCol) = MPAS_state % tracers(index_qc,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,index_qc)
+          MPAS_state % tracers(index_qr,iLay,iCol) = MPAS_state % tracers(index_qr,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,index_qr)
+          MPAS_state % theta(iLay,iCol) = MPAS_state % theta(iLay,iCol) + config_dt * (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+          rt_diabatic_tend(iLay,iCol) = (physics_state % ten_t(iCol,iLay) / MPAS_state % exner(iLay,iCol))
+          coeff = (1._RKIND + rvord * MPAS_state % tracers(index_qv,iLay,iCol))
+          MPAS_state % theta_m(iLay,iCol) = MPAS_state % theta(iLay,iCol) * coeff
+        end do
+      end do
+    end do
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
