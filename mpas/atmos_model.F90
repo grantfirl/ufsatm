@@ -390,7 +390,7 @@ contains
     real(MPAS_kind_phys) :: start_time, stop_time
  
     ! Prepare CCPP microphysics inputs with MPAS dycore outputs.
-    call ufs_mpas_to_microphysics(UFSATM_stateout)
+    call ufs_mpas_to_microphysics(UFSATM_stateout, UFSATM_statein)
 
     ! Call CCPP Microphysics Group
     ! NOT YET IMPLEMENTED in SDF
