@@ -171,7 +171,8 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: vgrs (:,:)   => null()  !< v component of layer wind
     real (kind=kind_phys), pointer :: wgrs (:,:)   => null()  !< w component of layer wind
     real (kind=kind_phys), pointer :: vvl  (:,:)   => null()  !< layer mean vertical velocity in pa/sec
-    real (kind=kind_phys), pointer :: tgrs (:,:)   => null()  !< model layer mean temperature in k
+    real (kind=kind_phys), pointer :: tgrs (:,:)   => null()  !< layer mean temperature in k
+    real (kind=kind_phys), pointer :: tgri (:,:)   => null()  !< level (interface) temperature in k
     real (kind=kind_phys), pointer :: qgrs (:,:,:) => null()  !< layer mean tracer concentration
 !SA-3D-TKE
     real (kind=kind_phys), pointer :: def_1 (:,:)   => null()  !< deformation
@@ -2363,9 +2364,11 @@ module GFS_typedefs
     !--- shared radiation and physics variables
     allocate (Statein%vvl  (IM,Model%levs))
     allocate (Statein%tgrs (IM,Model%levs))
+    allocate (Statein%tgri (IM,Model%levs+1))
 
     Statein%vvl  = clear_val
     Statein%tgrs = clear_val
+    Statein%tgri = clear_val
 ! stochastic physics SKEB variable
     allocate (Statein%diss_est(IM,Model%levs))
     Statein%diss_est= clear_val
@@ -6088,7 +6091,7 @@ module GFS_typedefs
     if (Model%dycore_active == Model%dycore_fv3) then
        Model%si(1:Model%levs+1) = (ak(1:Model%levs+1) + bk(1:Model%levs+1) * con_p0 - ak(Model%levs+1)) / (con_p0 - ak(Model%levs+1))
     end if
-    ! DJS2025: NOT YET IMPLEMENTED
+    ! DJS2025: Needed for HML cloud diagnostics. Need to revisit for MPAS dynamical core.
     if (Model%dycore_active == Model%dycore_mpas) then
        Model%si(1:Model%levs+1) = 1._kind_phys
     endif

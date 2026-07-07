@@ -357,7 +357,7 @@ contains
     call ufs_mpas_phys_diag(UFSATM_radtend)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_physics_to_mpas(UFSATM_control, UFSATM_stateout)
+    call ufs_physics_to_mpas(UFSATM_stateout)
  
   end subroutine atmos_model_radiation_physics
 
@@ -408,7 +408,7 @@ contains
     setupClock = setupClock + (stop_time - start_time)
   
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
-    call ufs_microphysics_to_mpas(UFSATM_stateout, UFSATM_control)
+    call ufs_microphysics_to_mpas(UFSATM_stateout)
 
   end subroutine atmos_model_microphysics
 

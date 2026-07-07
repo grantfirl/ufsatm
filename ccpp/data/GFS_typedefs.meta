@@ -182,6 +182,13 @@
   dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
+[tgri]
+  standard_name = physics_timestep_initial_air_temperature_at_interface
+  long_name = model layer mean temperature at the beginning of the physics timestep
+  units = K
+  dimensions = (horizontal_dimension,vertical_interface_dimension)
+  type = real
+  kind = kind_phys
 [qgrs]
   standard_name = physics_timestep_initial_tracer_concentration
   long_name = model layer mean tracer concentration at the beginning of the physics timestep
