@@ -98,7 +98,7 @@ contains
                 physics_state % qgrs(iCol,iLay,iTracer) = max(0._RKIND, tracers(iTracer,iLay,iCol))
              end do
 
-             ! Air denisty (rho)
+             ! Air denisty (rho) (TODO: Pass to CCPP Physics)
              rho(iCol,iLay) = zz(iLay,iCol) * rho_zz(iLay,iCol)
 
              ! Potential temperature (theta_m -> theta)
@@ -117,7 +117,7 @@ contains
              ! Level height
              physics_state % phii(iCol,iLay)   = zgrid(iLay,iCol)
 
-             ! Layer thickness
+             ! Layer thickness (TODO: Pass to CCPP physics)
              dz(iCol,iLay) = zgrid(iLay+1,iCol) - zgrid(iLay,iCol)
 
              ! Exner funciton
@@ -468,7 +468,12 @@ contains
   !> Procedure to compute diabatic heating tendency from microphysics and store in MPAS pool.
   !> Called AFTER microphysics, BEFORE calling dynamics (next timestep)
   !>
-  !> Analogous to microphysics_to_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
+  !> This routine is where we compute the diabatic heating rate, "rt_diabatic_tend", due to the
+  !> microphysics.
+  !> Follows microphysics_to_MPAS from src/core_atmosphere/physics/mpas_atmphys_interface.F.
+  !> compute the diabatic heating rate, "rt_diabatic_tend" and save in MPAS memory for use by
+  !> the dynamics at the subsequent time step in dynamics/mpas_atm_time_integration.F.
+  !> Additionally, update any other fields needed by the dynamics (e.g., theta_m, rtheta_p)
   !>
   !> #########################################################################################
   subroutine ufs_microphysics_to_mpas(physics_state)
@@ -487,10 +492,10 @@ contains
     integer :: iCol, ithread, iLay, iTracer
     integer, pointer :: nCellsSolve, index_qv, index_qc, index_qr, num_scalars, nVertLevels
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, theta, rcv
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), pointer :: tracers(:,:,:), rt_diabatic_tend(:,:), rho_zz(:,:), theta_m(:,:)
-    real(kind=RKIND), pointer :: zz(:,:), zgrid(:,:), exner(:,:), exner_b(:,:), rtheta_b(:,:)
+    real(kind=RKIND), pointer :: zz(:,:), zgrid(:,:), exner(:,:), exner_b(:,:), rtheta_b(:,:), theta(:,:)
     real(kind=RKIND), pointer :: rtheta_p(:,:), pressure_b(:,:), pressure_p(:,:), surface_pressure(:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_microphysics_to_mpas'
 
@@ -530,11 +535,12 @@ contains
     call mpas_pool_get_array(diag_pool,  'rtheta_p',         rtheta_p)
     call mpas_pool_get_array(diag_pool,  'rtheta_base',      rtheta_b)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend', rt_diabatic_tend)
-    
+
     ! The MPAS version of microphysics schemes update the state within the dynamics;
     ! for CCPP/UFS, we will need to update the state variables here for use by the dynamics.
     ! Also, Update water vapor, cloud liquid water, rain mixing ratios, modified potential temperature,
     ! and potential temperature heating rate from microphysics
+    allocate(theta(nVertLevels, nCellsSolve))
     rcv = rgas/(cp-rgas)
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
@@ -544,17 +550,17 @@ contains
           
           ! Update potential temperature (theta) with microphysics tendency
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
-          theta = theta_m(iLay,iCol)/coeff + config_dt * (physics_state % ten_t(iCol,iLay) / exner(iLay,iCol))
+          theta(iLay,iCol) = theta_m(iLay,iCol)/coeff + config_dt * (physics_state % ten_t(iCol,iLay) / exner(iLay,iCol))
           
           ! Modified potential temperature (theta ->theta_m)
-          theta_m(iLay,iCol) = theta*coeff
+          theta_m(iLay,iCol) = theta(iLay,iCol)*coeff
 
           ! Now compute diabatic heating due to microphsyics, save for next time step
           rt_diabatic_tend(iLay,iCol) = (theta_m(iLay,iCol) - rt_diabatic_tend(iLay,iCol)) / config_dt
 
           ! Density weighted perturbation potential temperature
           rtheta_p(iLay,iCol) = rho_zz(iLay,iCol) * theta_m(iLay,iCol) - rtheta_b(iLay,iCol)
-          
+
           ! Exner function
           exner(iLay,iCol) = (zz(iLay,iCol)*(rgas/P0)*(rtheta_p(iLay,iCol)+rtheta_b(iLay,iCol)))**rcv
 
@@ -563,8 +569,9 @@ contains
                                     (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
           
           ! Scalars (col,layer,tracer) -> (tracer,layer,col)
-          do iTracer = 1,num_scalars
-             tracers(iTracer,iLay,iCol) = tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer)
+          tracers(1,iLay,iCol) = max(0._RKIND, tracers(1,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,1))
+          do iTracer = 3,num_scalars
+             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
           end do
           
         end do
@@ -661,7 +668,7 @@ contains
                 physics_state % gq0(iCol,iLay,iTracer) = max(0._RKIND, tracers(iTracer,iLay,iCol))
              end do
 
-             ! Air denisty (rho)
+             ! Air denisty (rho) (TODO: Pass to CCPP Physics)
              rho(iCol,iLay) = zz(iLay,iCol) * rho_zz(iLay,iCol)
 
              ! Potential temperature (theta_m -> theta)
@@ -673,7 +680,7 @@ contains
              ! Pressure
              pres = pressure_b(iLay,iCol) + pressure_p(iLay,iCol)
 
-             ! Height and layer-thickness
+             ! Height and layer-thickness (TODO: Pass to CCPP Physics)
              z  = zgrid(iLay,iCol)
              dz = zgrid(iLay+1,iCol) - zgrid(iLay,iCol)
 
