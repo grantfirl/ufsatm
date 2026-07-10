@@ -569,9 +569,8 @@ contains
                                     (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
           
           ! Scalars (col,layer,tracer) -> (tracer,layer,col)
-          tracers(1,iLay,iCol) = max(0._RKIND, tracers(1,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,1))
-          do iTracer = 3,num_scalars
-             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
+          do iTracer = 1,num_scalars
+             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol))! + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
           end do
           
         end do
