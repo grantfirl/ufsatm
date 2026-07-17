@@ -490,7 +490,7 @@ contains
     ! Locals
     type(mpas_pool_type), pointer :: diag_pool, mesh_pool, state_pool, tend_pool
     integer :: iCol, ithread, iLay, iTracer
-    integer, pointer :: nCellsSolve, index_qv, index_qc, index_qr, num_scalars, nVertLevels
+    integer, pointer :: nCellsSolve, index_qv, index_qc, index_qi, index_qr, index_qs, index_qg, index_nc, index_ni, index_nr, index_ns, index_ng, index_nifa, index_nwfa, num_scalars, nVertLevels
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv
     real(kind=RKIND), pointer :: config_dt
@@ -517,7 +517,17 @@ contains
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
     call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
     call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
+    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
+    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
+    call mpas_pool_get_dimension(state_pool, 'index_nc',    index_nc)
+    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
+    call mpas_pool_get_dimension(state_pool, 'index_nr',    index_nr)
+    call mpas_pool_get_dimension(state_pool, 'index_ns',    index_ns)
+    call mpas_pool_get_dimension(state_pool, 'index_ng',    index_ng)
+    call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
+    call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
@@ -570,12 +580,28 @@ contains
           
           ! Scalars (col,layer,tracer) -> (tracer,layer,col)
           do iTracer = 1,num_scalars
-             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol))! + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
+            tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol))! + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
           end do
           
         end do
       end do
     end do
+    
+    write(*,*) 'num_scalars',num_scalars
+    write(*,*) 'mean max/min ten qv',sum(tracers(index_qv,:,:)) / real(size(tracers(index_qv,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qv)), config_dt*minval(physics_state % ten_q(:,:,index_qv))
+    write(*,*) 'mean max/min ten qc',sum(tracers(index_qc,:,:)) / real(size(tracers(index_qc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qc)), config_dt*minval(physics_state % ten_q(:,:,index_qc)) 
+    write(*,*) 'mean max/min ten qi',sum(tracers(index_qi,:,:)) / real(size(tracers(index_qi,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qi)), config_dt*minval(physics_state % ten_q(:,:,index_qi))
+    write(*,*) 'mean max/min ten qr',sum(tracers(index_qr,:,:)) / real(size(tracers(index_qr,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qr)), config_dt* minval(physics_state % ten_q(:,:,index_qr))
+    write(*,*) 'mean max/min ten qs',sum(tracers(index_qs,:,:)) / real(size(tracers(index_qs,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qs)), config_dt*minval(physics_state % ten_q(:,:,index_qs))
+    write(*,*) 'mean max/min ten qg',sum(tracers(index_qg,:,:)) / real(size(tracers(index_qg,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qg)), config_dt*minval(physics_state % ten_q(:,:,index_qg))
+    write(*,*) 'mean max/min ten nc',sum(tracers(index_nc,:,:)) / real(size(tracers(index_nc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_nc)), config_dt*minval(physics_state % ten_q(:,:,index_nc))
+    write(*,*) 'mean max/min ten ni',sum(tracers(index_ni,:,:)) / real(size(tracers(index_ni,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ni)), config_dt*minval(physics_state % ten_q(:,:,index_ni))
+    write(*,*) 'mean max/min ten nr',sum(tracers(index_nr,:,:)) / real(size(tracers(index_nr,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_nr)), config_dt*minval(physics_state % ten_q(:,:,index_nr))
+    write(*,*) 'mean max/min ten ns',sum(tracers(index_ns,:,:)) / real(size(tracers(index_ns,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ns)), config_dt*minval(physics_state % ten_q(:,:,index_ns))
+    write(*,*) 'mean max/min ten ng',sum(tracers(index_ng,:,:)) / real(size(tracers(index_ng,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ng)), config_dt*minval(physics_state % ten_q(:,:,index_ng))
+    write(*,*) 'mean max/min ten nifa',sum(tracers(index_nifa,:,:)) / real(size(tracers(index_nifa,:,:))), config_dt*maxval(physics_state % ten_q(:,:,index_nifa)), config_dt*minval(physics_state % ten_q(:,:,index_nifa))
+    write(*,*) 'mean max/min ten nwfa',sum(tracers(index_nwfa,:,:)) /real(size(tracers(index_nwfa,:,:))),config_dt*maxval(physics_state % ten_q(:,:,index_nwfa)), config_dt*minval(physics_state % ten_q(:,:,index_nwfa))
+    
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
