@@ -254,8 +254,16 @@ contains
     real(kind=RKIND), pointer :: scalars(:,:,:), tend_scalars_phys(:,:,:), tend_scalars_dyn(:,:,:)
     real(kind=RKIND), pointer :: surface_pressure(:)
     integer, pointer :: nCellsSolve, num_scalars, nVertLevels 
-    integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
-    integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
+    integer, pointer :: index_qv => null()
+    integer, pointer :: index_qc => null()
+    integer, pointer :: index_qi => null()
+    integer, pointer :: index_qr => null()
+    integer, pointer :: index_qs => null()
+    integer, pointer :: index_qg => null()
+    integer, pointer :: index_nc => null()
+    integer, pointer :: index_ni => null()
+    integer, pointer :: index_nifa => null()
+    integer, pointer :: index_nwfa => null()
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol,iLay,ithread,iScalar
     real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
@@ -286,6 +294,16 @@ contains
     call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
     call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
     call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
+    write(*,*) 'index_qv', index_qv
+    write(*,*) 'index_qc', index_qc
+    write(*,*) 'index_qi', index_qi
+    write(*,*) 'index_qr', index_qr
+    write(*,*) 'index_qs', index_qs
+    write(*,*) 'index_qg', index_qg
+    write(*,*) 'index_nc', index_nc
+    write(*,*) 'index_ni', index_ni
+    write(*,*) 'index_nifa', index_nifa
+    write(*,*) 'index_nwfa', index_nwfa
 
     ! Grab fields from MPAS pools
     call mpas_pool_get_array(state_pool,'theta_m',          theta_m,1)
