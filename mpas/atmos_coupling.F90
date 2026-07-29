@@ -316,7 +316,7 @@ contains
       end do
     end do
 
-    if(index_qc .gt. -1) then
+    if(associated(index_qc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -326,7 +326,7 @@ contains
       end do
     end if
 
-    if(index_qi .gt. -1) then
+    if(associated(index_qi)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -336,7 +336,7 @@ contains
       end do
     end if
 
-    if(index_qr .gt. -1) then
+    if(associated(index_qr)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -346,7 +346,7 @@ contains
       end do
     end if
 
-    if(index_qs .gt. -1) then
+    if(associated(index_qs)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -356,7 +356,7 @@ contains
       end do
     end if
 
-    if(index_qg .gt. -1) then
+    if(associated(index_qg)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -366,7 +366,7 @@ contains
       end do
     end if
 
-    if(index_nc .gt. -1) then
+    if(associated(index_nc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -376,7 +376,7 @@ contains
       end do
     end if
 
-    if(index_ni .gt. -1) then
+    if(associated(index_ni)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -386,7 +386,7 @@ contains
       end do
     end if
 
-    if(index_nifa .gt. -1) then
+    if(associated(index_nifa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -396,7 +396,7 @@ contains
       end do
     end if
 
-    if(index_nwfa .gt. -1) then
+    if(associated(index_nwfa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
