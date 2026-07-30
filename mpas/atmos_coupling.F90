@@ -582,7 +582,7 @@ contains
           
           ! Update potential temperature (theta) with microphysics tendency
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
-          theta(iLay,iCol) = theta_m(iLay,iCol)/coeff + config_dt * (physics_state % ten_t(iCol,iLay) / exner(iLay,iCol))
+          theta(iLay,iCol) = theta_m(iLay,iCol)/coeff + config_dt * (physics_state % dtdt(iCol,iLay) / exner(iLay,iCol))
           
           ! Modified potential temperature (theta ->theta_m)
           theta_m(iLay,iCol) = theta(iLay,iCol)*coeff
@@ -602,7 +602,7 @@ contains
           
           ! Scalars (col,layer,tracer) -> (tracer,layer,col)
           do iTracer = 1,num_scalars
-            tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol))! + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
+            tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % dqdt(iCol,iLay,iTracer))
           end do
           
         end do
