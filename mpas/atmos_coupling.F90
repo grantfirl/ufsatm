@@ -592,6 +592,7 @@ contains
             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % dqdt(iCol,iLay,iTracer))
           end do
           
+          ! update the virtual temperature coefficient with updated qv
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
           ! Modified potential temperature (theta ->theta_m)
           theta_m(iLay,iCol) = theta(iLay,iCol)*coeff
@@ -599,6 +600,7 @@ contains
           ! Now compute diabatic heating due to microphsyics, save for next time step
           rt_diabatic_tend(iLay,iCol) = (theta_m(iLay,iCol) - rt_diabatic_tend(iLay,iCol)) / config_dt
           
+          ! Save the straight theta tendency due to microphysics
           dtheta_dt_mp(iLay,iCol) =  (theta(iLay,iCol) - theta_dyn) / config_dt
           
           ! Density weighted perturbation potential temperature
@@ -609,32 +611,7 @@ contains
 
           ! Perturbation pressure
           pressure_p(iLay,iCol) = zz(iLay,iCol)*rgas*(exner(iLay,iCol)*rtheta_p(iLay,iCol) + &
-                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
-          
-          !Standalone algorithm
-          !1. save initial theta_m
-          !2. calculate virtual coefficient
-          !3. calculate theta
-          !4. update tracers (including qv)
-          !5. update theta
-          !6. recalc virtual coeffficient and theta_m using updated theta and qv
-          !7. calculate theta_m tendency and save
-          !8. calculate theta tendency due to MP
-          !9. calculate perturbation theta from new values
-          !10. recalculate exner with udpated perturbation theta
-          !11. recalculate perturbation pressure using updated exner, etc.
-          
-          !Current algorithm
-          !1. save initial theta_m
-          !2. calculate virtual coefficient
-          !3. calculate theta while udpating
-          !4. calculate updated theta_m
-          !5. calculate theta_m tendency and save
-          !6. calculate perturbation theta from new values
-          !7. recalculate exner with udpated perturbation theta
-          !8. recalculate perturbation pressure using updated exner, etc.
-          !9. update tracers (including qv)
-          
+                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))  
         end do
       end do
     end do
