@@ -270,23 +270,6 @@ contains
 
     !
     ! Setup scalars for State pool and scalars for Tend pool
-    !
-    call mpas_pool_add_dimension(state, 'index_qv',    1)
-    call mpas_pool_add_dimension(state, 'index_qc',    2)
-    call mpas_pool_add_dimension(state, 'index_qr',    3)
-    call mpas_pool_add_dimension(state, 'index_qi',    4)
-    call mpas_pool_add_dimension(state, 'index_qs',    5)
-    call mpas_pool_add_dimension(state, 'index_qg',    6)
-    call mpas_pool_add_dimension(state, 'index_nc',    7)
-    call mpas_pool_add_dimension(state, 'index_nr',    8)
-    call mpas_pool_add_dimension(state, 'index_ni',    9)
-    call mpas_pool_add_dimension(state, 'index_ns',   10)
-    call mpas_pool_add_dimension(state, 'index_ng',   11)
-    call mpas_pool_add_dimension(state, 'index_nifa', 12)
-    call mpas_pool_add_dimension(state, 'index_nwfa', 13)
-    call mpas_pool_add_dimension(state, 'moist_start', 1)
-    call mpas_pool_add_dimension(state, 'moist_end', Cfg % nwat)
-    nullify (state)
     call ufs_mpas_define_scalars(mpas_from_ufs_cnst, ufs_from_mpas_cnst, ierr)
     if (ierr /= 0) then
        call mpas_log_write(subname // " Set-up of constituents for MPAS-A dycore failed.", messageType=MPAS_LOG_CRIT)
