@@ -514,7 +514,7 @@ contains
     integer, pointer :: index_nwfa => null()
     integer, pointer :: num_scalars, nVertLevels
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv, theta_dyn
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), pointer :: tracers(:,:,:), rt_diabatic_tend(:,:), rho_zz(:,:), theta_m(:,:)
     real(kind=RKIND), pointer :: zz(:,:), zgrid(:,:), exner(:,:), exner_b(:,:), rtheta_b(:,:), theta(:,:)
