@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<suite name="MPAS_RRFS" version="1">
+<suite name="MPAS_GFS" version="1">
   <group name="time_vary">
     <subcycle loop="1">
       <scheme>GFS_time_vary_pre</scheme>
@@ -31,8 +31,8 @@
   </group>
   <group name="microphysics">
     <subcycle loop="1">
-      <scheme>mp_tempo</scheme>
-      <scheme>mp_tempo_post</scheme>
+      <scheme>mp_thompson</scheme>
+      <scheme>mp_thompson_post</scheme>
       <scheme>GFS_MP_generic_post</scheme>
      </subcycle>
   </group>
