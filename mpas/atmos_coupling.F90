@@ -254,8 +254,16 @@ contains
     real(kind=RKIND), pointer :: scalars(:,:,:), tend_scalars_phys(:,:,:), tend_scalars_dyn(:,:,:)
     real(kind=RKIND), pointer :: surface_pressure(:)
     integer, pointer :: nCellsSolve, num_scalars, nVertLevels 
-    integer, pointer :: index_qv, index_qc, index_qi, index_qr, index_qs, index_qg
-    integer, pointer :: index_nc, index_ni, index_nifa, index_nwfa
+    integer, pointer :: index_qv => null()
+    integer, pointer :: index_qc => null()
+    integer, pointer :: index_qi => null()
+    integer, pointer :: index_qr => null()
+    integer, pointer :: index_qs => null()
+    integer, pointer :: index_qg => null()
+    integer, pointer :: index_nc => null()
+    integer, pointer :: index_ni => null()
+    integer, pointer :: index_nifa => null()
+    integer, pointer :: index_nwfa => null()
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol,iLay,ithread,iScalar
     real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
@@ -316,7 +324,7 @@ contains
       end do
     end do
 
-    if(index_qc .gt. -1) then
+    if(associated(index_qc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -326,7 +334,7 @@ contains
       end do
     end if
 
-    if(index_qi .gt. -1) then
+    if(associated(index_qi)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -336,7 +344,7 @@ contains
       end do
     end if
 
-    if(index_qr .gt. -1) then
+    if(associated(index_qr)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -346,7 +354,7 @@ contains
       end do
     end if
 
-    if(index_qs .gt. -1) then
+    if(associated(index_qs)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -356,7 +364,7 @@ contains
       end do
     end if
 
-    if(index_qg .gt. -1) then
+    if(associated(index_qg)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -366,7 +374,7 @@ contains
       end do
     end if
 
-    if(index_nc .gt. -1) then
+    if(associated(index_nc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -376,7 +384,7 @@ contains
       end do
     end if
 
-    if(index_ni .gt. -1) then
+    if(associated(index_ni)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -386,7 +394,7 @@ contains
       end do
     end if
 
-    if(index_nifa .gt. -1) then
+    if(associated(index_nifa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -396,7 +404,7 @@ contains
       end do
     end if
 
-    if(index_nwfa .gt. -1) then
+    if(associated(index_nwfa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
@@ -490,13 +498,27 @@ contains
     ! Locals
     type(mpas_pool_type), pointer :: diag_pool, mesh_pool, state_pool, tend_pool
     integer :: iCol, ithread, iLay, iTracer
-    integer, pointer :: nCellsSolve, index_qv, index_qc, index_qr, num_scalars, nVertLevels
+    integer, pointer :: nCellsSolve
+    integer, pointer :: index_qv => null()
+    integer, pointer :: index_qc => null()
+    integer, pointer :: index_qi => null()
+    integer, pointer :: index_qr => null()
+    integer, pointer :: index_qs => null()
+    integer, pointer :: index_qg => null()
+    integer, pointer :: index_nc => null()
+    integer, pointer :: index_ni => null()
+    integer, pointer :: index_nr => null()
+    integer, pointer :: index_ns => null()
+    integer, pointer :: index_ng => null()
+    integer, pointer :: index_nifa => null()
+    integer, pointer :: index_nwfa => null()
+    integer, pointer :: num_scalars, nVertLevels
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv
+    real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv, theta_dyn
     real(kind=RKIND), pointer :: config_dt
     real(kind=RKIND), pointer :: tracers(:,:,:), rt_diabatic_tend(:,:), rho_zz(:,:), theta_m(:,:)
     real(kind=RKIND), pointer :: zz(:,:), zgrid(:,:), exner(:,:), exner_b(:,:), rtheta_b(:,:), theta(:,:)
-    real(kind=RKIND), pointer :: rtheta_p(:,:), pressure_b(:,:), pressure_p(:,:), surface_pressure(:)
+    real(kind=RKIND), pointer :: rtheta_p(:,:), pressure_b(:,:), pressure_p(:,:), surface_pressure(:), dtheta_dt_mp(:,:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_microphysics_to_mpas'
 
     ! Get openMP information
@@ -517,7 +539,17 @@ contains
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
     call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
+    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
     call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
+    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
+    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
+    call mpas_pool_get_dimension(state_pool, 'index_nc',    index_nc)
+    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
+    call mpas_pool_get_dimension(state_pool, 'index_nr',    index_nr)
+    call mpas_pool_get_dimension(state_pool, 'index_ns',    index_ns)
+    call mpas_pool_get_dimension(state_pool, 'index_ng',    index_ng)
+    call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
+    call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
@@ -535,6 +567,7 @@ contains
     call mpas_pool_get_array(diag_pool,  'rtheta_p',         rtheta_p)
     call mpas_pool_get_array(diag_pool,  'rtheta_base',      rtheta_b)
     call mpas_pool_get_array(tend_pool,  'rt_diabatic_tend', rt_diabatic_tend)
+    call mpas_pool_get_array(diag_pool,  'dtheta_dt_mp',     dtheta_dt_mp)
 
     ! The MPAS version of microphysics schemes update the state within the dynamics;
     ! for CCPP/UFS, we will need to update the state variables here for use by the dynamics.
@@ -545,37 +578,59 @@ contains
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
+          
           ! Initialize diabatic heating tendency (initially fill with theta_m before updating)
           rt_diabatic_tend(iLay,iCol) = theta_m(iLay,iCol)
           
           ! Update potential temperature (theta) with microphysics tendency
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
-          theta(iLay,iCol) = theta_m(iLay,iCol)/coeff + config_dt * (physics_state % ten_t(iCol,iLay) / exner(iLay,iCol))
+          theta_dyn = theta_m(ilay,iCol)/coeff
+          theta(iLay,iCol) = theta_dyn + config_dt * (physics_state % dtdt(iCol,iLay) / exner(iLay,iCol))
           
+          ! Scalars (col,layer,tracer) -> (tracer,layer,col)
+          do iTracer = 1,num_scalars
+            tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % dqdt(iCol,iLay,iTracer))
+          end do
+          
+          ! update the virtual temperature coefficient with updated qv
+          coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
           ! Modified potential temperature (theta ->theta_m)
           theta_m(iLay,iCol) = theta(iLay,iCol)*coeff
-
+          
           ! Now compute diabatic heating due to microphsyics, save for next time step
           rt_diabatic_tend(iLay,iCol) = (theta_m(iLay,iCol) - rt_diabatic_tend(iLay,iCol)) / config_dt
-
+          
+          ! Save the straight theta tendency due to microphysics
+          dtheta_dt_mp(iLay,iCol) =  (theta(iLay,iCol) - theta_dyn) / config_dt
+          
           ! Density weighted perturbation potential temperature
           rtheta_p(iLay,iCol) = rho_zz(iLay,iCol) * theta_m(iLay,iCol) - rtheta_b(iLay,iCol)
-
+          
           ! Exner function
           exner(iLay,iCol) = (zz(iLay,iCol)*(rgas/P0)*(rtheta_p(iLay,iCol)+rtheta_b(iLay,iCol)))**rcv
 
           ! Perturbation pressure
           pressure_p(iLay,iCol) = zz(iLay,iCol)*rgas*(exner(iLay,iCol)*rtheta_p(iLay,iCol) + &
-                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
-          
-          ! Scalars (col,layer,tracer) -> (tracer,layer,col)
-          do iTracer = 1,num_scalars
-             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol))! + config_dt * physics_state % ten_q(iCol,iLay,iTracer))
-          end do
-          
+                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))  
         end do
       end do
     end do
+    
+    ! write(*,*) 'num_scalars',num_scalars
+    ! if (associated(index_qv)) write(*,*) 'mean max/min ten qv',sum(tracers(index_qv,:,:)) / real(size(tracers(index_qv,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qv)), config_dt*minval(physics_state % ten_q(:,:,index_qv))
+    ! if (associated(index_qc)) write(*,*) 'mean max/min ten qc',sum(tracers(index_qc,:,:)) / real(size(tracers(index_qc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qc)), config_dt*minval(physics_state % ten_q(:,:,index_qc)) 
+    ! if (associated(index_qi)) write(*,*) 'mean max/min ten qi',sum(tracers(index_qi,:,:)) / real(size(tracers(index_qi,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qi)), config_dt*minval(physics_state % ten_q(:,:,index_qi))
+    ! if (associated(index_qr)) write(*,*) 'mean max/min ten qr',sum(tracers(index_qr,:,:)) / real(size(tracers(index_qr,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qr)), config_dt* minval(physics_state % ten_q(:,:,index_qr))
+    ! if (associated(index_qs)) write(*,*) 'mean max/min ten qs',sum(tracers(index_qs,:,:)) / real(size(tracers(index_qs,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qs)), config_dt*minval(physics_state % ten_q(:,:,index_qs))
+    ! if (associated(index_qg)) write(*,*) 'mean max/min ten qg',sum(tracers(index_qg,:,:)) / real(size(tracers(index_qg,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qg)), config_dt*minval(physics_state % ten_q(:,:,index_qg))
+    ! if (associated(index_nc)) write(*,*) 'mean max/min ten nc',sum(tracers(index_nc,:,:)) / real(size(tracers(index_nc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_nc)), config_dt*minval(physics_state % ten_q(:,:,index_nc))
+    ! if (associated(index_ni)) write(*,*) 'mean max/min ten ni',sum(tracers(index_ni,:,:)) / real(size(tracers(index_ni,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ni)), config_dt*minval(physics_state % ten_q(:,:,index_ni))
+    ! if (associated(index_nr)) write(*,*) 'mean max/min ten nr',sum(tracers(index_nr,:,:)) / real(size(tracers(index_nr,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_nr)), config_dt*minval(physics_state % ten_q(:,:,index_nr))
+    ! if (associated(index_ns)) write(*,*) 'mean max/min ten ns',sum(tracers(index_ns,:,:)) / real(size(tracers(index_ns,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ns)), config_dt*minval(physics_state % ten_q(:,:,index_ns))
+    ! if (associated(index_ng)) write(*,*) 'mean max/min ten ng',sum(tracers(index_ng,:,:)) / real(size(tracers(index_ng,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ng)), config_dt*minval(physics_state % ten_q(:,:,index_ng))
+    ! if (associated(index_nifa)) write(*,*) 'mean max/min ten nifa',sum(tracers(index_nifa,:,:)) / real(size(tracers(index_nifa,:,:))), config_dt*maxval(physics_state % ten_q(:,:,index_nifa)), config_dt*minval(physics_state % ten_q(:,:,index_nifa))
+    ! if (associated(index_nwfa)) write(*,*) 'mean max/min ten nwfa',sum(tracers(index_nwfa,:,:)) /real(size(tracers(index_nwfa,:,:))),config_dt*maxval(physics_state % ten_q(:,:,index_nwfa)), config_dt*minval(physics_state % ten_q(:,:,index_nwfa))
+    
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
