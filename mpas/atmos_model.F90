@@ -326,6 +326,12 @@ contains
     integer :: ierr
     real(MPAS_kind_phys) :: start_time, stop_time
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_radiation_physics'
+    integer :: jdat(8), rc
+
+    ! Update physics time
+    jdat(:) = 0
+    call ESMF_TimeGet (Atmos%CurrTime, YY=jdat(1),MM=jdat(2),DD=jdat(3),H=jdat(5),M=jdat(6),S=jdat(7),rc=rc)
+    UFSATM_control%jdat(:) = jdat(:)
 
     ! Populate physics inputs with MPAS data.
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
