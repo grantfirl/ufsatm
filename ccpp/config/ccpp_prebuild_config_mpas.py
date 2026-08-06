@@ -96,6 +96,7 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_phys_time_vary.fv3.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rad_time_vary.mpas.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_time_vary_pre.fv3.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_suite_interstitial_2.F90',
     'physics/physics/Interstitials/MPAS/MPAS_suite_interstitial_1.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/dcyc2t3.f',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_radiation_surface.F90',
@@ -107,6 +108,13 @@ SCHEME_FILES = [
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_cloud_diagnostics.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_cloud_mp.F90',
     'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_rrtmgp_cloud_overlap.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_generic_pre.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_generic_post.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_composites_pre.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_composites_inter.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_composites_post.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_loop_control_part1.F90',
+    'physics/physics/Interstitials/UFS_SCM_NEPTUNE/GFS_surface_loop_control_part2.F90',
     'physics/physics/Radiation/RRTMG/radsw_main.F90',
     'physics/physics/Radiation/RRTMG/radlw_main.F90',
     'physics/physics/Radiation/RRTMG/rrtmg_lw_post.F90',
@@ -129,6 +137,11 @@ SCHEME_FILES = [
     'physics/physics/MP/Thompson/mp_thompson_post.F90',
     'physics/physics/MP/TEMPO/mp_tempo.F90',
     'physics/physics/MP/TEMPO/mp_tempo_post.F90'
+    'physics/physics/SFC_Layer/MYNN/MYNN/CCPP/module_sf_mynnsfc_driver.F90',
+    'physics/physics/SFC_Layer/UFS/sfc_diag.f',
+    'physics/physics/SFC_Layer/UFS/sfc_diag_post.F90',
+    'physics/physics/SFC_Models/Lake/CLM/clm_lake.f90',
+    'physics/physics/SFC_Models/Land/RUC/lsm_ruc.F90',
 ]
 
 # Default build dir, relative to current working directory,
