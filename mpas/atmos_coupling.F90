@@ -882,7 +882,7 @@ contains
     call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          physics_sfcprop % slmsk(iCol) = landmask(iCol)
+          !physics_sfcprop % slmsk(iCol) = landmask(iCol)
           physics_sfcprop % tsfco(iCol) = sst(iCol)
           physics_sfcprop % weasd(iCol) = snow(iCol)
           physics_sfcprop % tg3(iCol)   = tmn(iCol)

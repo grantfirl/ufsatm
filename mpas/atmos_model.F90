@@ -262,7 +262,7 @@ contains
     ! we are calling the physics before the MPAS dynamical core.
     !
     call ufs_mpas_grid_to_physics(UFSATM_grid)
-    !call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
+    call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
 
     ! Initialize the CCPP framework
