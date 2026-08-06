@@ -901,19 +901,24 @@ contains
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_phys_diag(radiation)
+  subroutine ufs_mpas_phys_diag(radiation,diagnostics)
     use GFS_typedefs,         only : GFS_radtend_type
+    use GFS_typedefs,         only : GFS_diag_type
     use mpas_kind_types,      only : RKIND
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
 
     ! Arguments
     type(GFS_radtend_type), intent(in) :: radiation
+    type(GFS_diag_type),    intent(in) :: diagnostics
 
     ! Locals
     type(mpas_pool_type), pointer :: diag_phys
     real(RKIND),dimension(:),pointer :: swdnb,swdnbc,swupb,swupbc
     real(RKIND),dimension(:),pointer :: lwdnb,lwdnbc,lwupb,lwupbc
+    real(RKIND),dimension(:,:),pointer :: refl10cm
+    real(RKIND),dimension(:),pointer :: rainc,rainnc,frainnc,snownc,graupelnc
+    real(RKIND),dimension(:),pointer :: raincv,rainncv,snowncv,graupelncv
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol, ithread
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_phys_diag'
@@ -935,10 +940,20 @@ contains
     call mpas_pool_get_array(diag_phys,'lwdnbc'    , lwdnbc    )
     call mpas_pool_get_array(diag_phys,'lwupb'     , lwupb     )
     call mpas_pool_get_array(diag_phys,'lwupbc'    , lwupbc    )
+    call mpas_pool_get_array(diag_phys,'refl10cm'  , refl10cm  )
+    call mpas_pool_get_array(diag_phys,'rainc'     , rainc     )
+    call mpas_pool_get_array(diag_phys,'rainnc'    , rainnc    )
+    call mpas_pool_get_array(diag_phys,'frainnc'   , frainnc   )
+    call mpas_pool_get_array(diag_phys,'snownc'    , snownc    )
+    call mpas_pool_get_array(diag_phys,'graupelnc' , graupelnc )
+    call mpas_pool_get_array(diag_phys,'raincv'    , raincv    )
+    call mpas_pool_get_array(diag_phys,'rainncv'   , rainncv   )
+    call mpas_pool_get_array(diag_phys,'snowncv'   , snowncv   )
+    call mpas_pool_get_array(diag_phys,'graupelncv', graupelncv)
 
-    ! Surface fluxes
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          ! Radiation fluxes at surface
           swdnb(iCol)  = radiation%sfcfsw(iCol)%dnfxc
           swdnbc(iCol) = radiation%sfcfsw(iCol)%dnfx0
           swupb(iCol)  = radiation%sfcfsw(iCol)%upfxc
@@ -947,6 +962,19 @@ contains
           lwdnbc(iCol) = radiation%sfcflw(iCol)%dnfx0
           lwupb(iCol)  = radiation%sfcflw(iCol)%upfxc
           lwupbc(iCol) = radiation%sfcflw(iCol)%upfx0
+          ! Reflectivity
+          refl10cm(:,iCol) = diagnostics%refl_10cm(iCol,:)
+          ! Instantaneous precipitation
+          raincv(iCol)     = diagnostics%rain(iCol)
+          rainncv(iCol)    = diagnostics%rainc(iCol)
+          snowncv(iCol)    = diagnostics%snow(iCol)
+          graupelncv(iCol) = diagnostics%graupel(iCol)
+          ! Accumulated precipitation
+          rainc(iCol)      = diagnostics%cnvprcp(iCol)
+          rainnc(iCol)     = diagnostics%totprcp(iCol)
+          frainnc(iCol)    = diagnostics%totice(iCol)
+          snownc(iCol)     = diagnostics%totsnw(iCol)
+          graupelnc(iCol)  = diagnostics%totgrp(iCol)
        end do
     end do
   end subroutine ufs_mpas_phys_diag  
