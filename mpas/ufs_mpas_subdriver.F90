@@ -537,7 +537,7 @@ contains
   !> Loop over dynamical time-step(s) and increment MPAS state (timelevel 1->2)
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_run(mpasClock, outClock, debug)
+  subroutine ufs_mpas_run(mpasClock, outClock, debug, phys_diag)
     ! MPAS
     use atm_core,             only : atm_do_timestep, atm_compute_output_diagnostics
     use mpas_domain_routines, only : mpas_pool_get_dimension
@@ -552,7 +552,7 @@ contains
     use mpas_timekeeping,     only : mpas_set_timeInterval, operator(+), operator(.LT.), operator(.GT.), operator(.LE.), operator(.EQ.)
     ! Arguments
     real(kind=R8KIND), intent(inout) :: mpasClock,outClock
-    logical, intent(in   ) :: debug
+    logical, intent(in   ) :: debug, phys_diag
     ! Locals
     character(len=*), parameter :: subname = 'ufs_mpas_run::ufs_mpas_run'
     real (kind=RKIND), pointer :: config_dt
@@ -690,7 +690,9 @@ contains
     ! Output stream
     if (timeStop .EQ. mpas_output_times(out_file_index)) then
        call ufs_mpas_write("output",    timeStampOutFile, debug)
-       call ufs_mpas_write("diag_phys", timeStampOutFile, debug)
+       if (phys_diag) then
+          call ufs_mpas_write("diag_phys", timeStampOutFile, debug)
+       end if
        out_file_index = out_file_index + 1
     end if
 
