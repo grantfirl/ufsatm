@@ -136,12 +136,12 @@ SCHEME_FILES = [
     'physics/physics/MP/Thompson/mp_thompson.F90',
     'physics/physics/MP/Thompson/mp_thompson_post.F90',
     'physics/physics/MP/TEMPO/mp_tempo.F90',
-    'physics/physics/MP/TEMPO/mp_tempo_post.F90'
+    'physics/physics/MP/TEMPO/mp_tempo_post.F90',
     'physics/physics/SFC_Layer/MYNN/MYNN/CCPP/module_sf_mynnsfc_driver.F90',
     'physics/physics/SFC_Layer/UFS/sfc_diag.f',
     'physics/physics/SFC_Layer/UFS/sfc_diag_post.F90',
     'physics/physics/SFC_Models/Lake/CLM/clm_lake.f90',
-    'physics/physics/SFC_Models/Land/RUC/lsm_ruc.F90',
+    'physics/physics/SFC_Models/Land/RUC/lsm_ruc.F90'
 ]
 
 # Default build dir, relative to current working directory,
