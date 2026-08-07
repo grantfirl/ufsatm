@@ -45,6 +45,7 @@ module atmos_model_mod
   private
 
   public :: dycore_only
+  public :: phys_diag
   public :: atmos_control_type
   public :: atmos_model_init
   public :: atmos_model_end
@@ -74,8 +75,9 @@ module atmos_model_mod
   logical :: dycore_only      = .false.
   logical :: debug            = .false.
   logical :: regional         = .false.
+  logical :: phys_diag        = .false.
 
-  namelist /atmos_model_nml/ blocksize, dycore_only, debug, ccpp_suite, ic_filename,          &
+  namelist /atmos_model_nml/ blocksize, dycore_only, phys_diag, debug, ccpp_suite, ic_filename,&
        lbc_filename, regional, stream_list_history, stream_list_restart, stream_list_diag
 
   ! Component Timers
@@ -167,6 +169,7 @@ contains
     call mpi_bcast(regional,            1,                        MPI_LOGICAL,   Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(dycore_only,         1,                        MPI_LOGICAL,   Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(debug,               1,                        MPI_LOGICAL,   Cfg%master, Cfg%mpi_comm, ierr)
+    call mpi_bcast(phys_diag,           1,                        MPI_LOGICAL,   Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(ccpp_suite,          len(ccpp_suite),          MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(blocksize,           1,                        MPI_INTEGER,   Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(ic_filename,         len(ic_filename),         MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
@@ -360,7 +363,7 @@ contains
     physClock = physClock + (stop_time - start_time)
 
     ! Populate MPAS pools with physics data (for diagnostics).
-    call ufs_mpas_phys_diag(UFSATM_radtend)
+    call ufs_mpas_phys_diag(UFSATM_radtend, UFSATM_intdiag)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_physics_to_mpas(UFSATM_stateout)
@@ -379,7 +382,7 @@ contains
     real(MPAS_kind_phys) :: start_time, stop_time
     
     ! Call MPAS dycore
-    call ufs_mpas_run(mpasClock, outClock, debug)
+    call ufs_mpas_run(mpasClock, outClock, debug, phys_diag)
     
   end subroutine atmos_model_dynamics
 

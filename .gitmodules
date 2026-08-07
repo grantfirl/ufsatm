@@ -16,5 +16,7 @@
   branch = develop
 [submodule "mpas/MPAS-Model"]
   path = mpas/MPAS-Model
-  url = https://github.com/ufs-community/MPAS-Model.git
-  branch = noaa/develop
+  #url = https://github.com/ufs-community/MPAS-Model.git
+  #branch = noaa/develop
+  url = https://github.com/dustinswales/MPAS-Model.git
+  branch = feature/phys2dyn_radmp
