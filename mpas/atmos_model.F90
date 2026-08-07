@@ -363,7 +363,7 @@ contains
     physClock = physClock + (stop_time - start_time)
 
     ! Populate MPAS pools with physics data (for diagnostics).
-    call ufs_mpas_phys_diag(UFSATM_radtend, UFSATM_intdiag)
+    call ufs_mpas_phys_diag(UFSATM_control, UFSATM_radtend, UFSATM_intdiag, UFSATM_tbd)
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_physics_to_mpas(UFSATM_stateout)
