@@ -288,11 +288,13 @@ module ufs_mpas_io
     ]
 
   !> #########################################################################################
-  !> This list contains radiation diagnostics.
+  !> This list contains physics diagnostics.
   !> It consists of variables that are members of the MPAS "diag_phys" structure.
   !> For the UWM, we include these diagnostics in the MPAS "output" stream.
   !> #########################################################################################
   type(var_info_type), parameter :: diag_phys_var_info_list(*) = [ &
+       var_info_type('Time'                            , 'real'      , 0), &
+       var_info_type('initial_time'                    , 'character' , 0), &
        var_info_type('swdnb'                           , 'real'      , 1), &
        var_info_type('swdnbc'                          , 'real'      , 1), &
        var_info_type('swdnt'                           , 'real'      , 1), &
@@ -308,8 +310,18 @@ module ufs_mpas_io
        var_info_type('lwupb'                           , 'real'      , 1), &
        var_info_type('lwupbc'                          , 'real'      , 1), &
        var_info_type('lwupt'                           , 'real'      , 1), &
-       var_info_type('lwuptc'                          , 'real'      , 1)  &
-    ]
+       var_info_type('lwuptc'                          , 'real'      , 1), &
+       var_info_type('refl10cm'                        , 'real'      , 2), &
+       var_info_type('rainncv'                         , 'real'      , 1), &
+       var_info_type('raincv'                          , 'real'      , 1), &
+       var_info_type('snowncv'                         , 'real'      , 1), &
+       var_info_type('graupelncv'                      , 'real'      , 1), &
+       var_info_type('rainnc'                          , 'real'      , 1), &
+       var_info_type('rainc'                           , 'real'      , 1), &
+       var_info_type('frainnc'                         , 'real'      , 1), &
+       var_info_type('snownc'                          , 'real'      , 1), &
+       var_info_type('graupelnc'                       , 'real'      , 1)  &
+       ]
 contains
 
   !> #########################################################################################
@@ -363,14 +375,9 @@ contains
     ! Locals
     character(len=*), parameter :: subname = 'ufs_mpas_io::ufs_mpas_read_stream_list'
     
-    ! Output stream
-    call read_stream_list(me, master, mpicomm, stream_list_history,  stream_list_history_funit,  'history')
-
-    ! Diag stream
-    !call read_stream_list(me, master, mpicomm, stream_list_diag,  stream_list_diag_funit,  'diag')
- 
-    ! Restart stream
-    !call read_stream_list(me, master, mpicomm, stream_list_restart, stream_list_restart_funit, 'restart')
+    call read_stream_list(me, master, mpicomm, stream_list_history,  stream_list_history_funit, 'history')
+    call read_stream_list(me, master, mpicomm, stream_list_diag,     stream_list_diag_funit,    'diag_phys')
+    call read_stream_list(me, master, mpicomm, stream_list_restart,  stream_list_restart_funit, 'restart')
 
   end subroutine ufs_mpas_read_stream_lists
 
@@ -389,6 +396,7 @@ contains
     integer, intent(inout) :: funit
     character(len=*), intent(in) :: stream_name
     integer :: nvars, ivar, io, i, nvar_av, count, mpierr
+    integer :: nvars_hist, nvars_rstr,nvars_diag
     logical :: file_exists, found
     character(len=128) :: line_buffer
     character(len=128), allocatable :: var_list(:)
@@ -411,8 +419,13 @@ contains
        allocate(var_info_list(0))
     case ('restart')
        allocate(var_info_list, source=restart_var_info_list)
+       nvars_rstr = size(restart_var_info_list)
     case ('history')
        allocate(var_info_list, source=history_var_info_list)
+       nvars_hist = size(history_var_info_list)
+    case ('diag_phys')
+       allocate(var_info_list, source=diag_phys_var_info_list)
+       nvars_diag = size(diag_phys_var_info_list)
     end select
 
     ! On master process...
@@ -480,14 +493,26 @@ contains
     call mpi_barrier(mpicomm, mpierr)
 
     ! Broadcast dimension
-    call mpi_bcast(nvars, 1, MPI_INTEGER, master, mpicomm, mpierr)
+    select case (trim(adjustl(stream_name)))
+    case ('restart')
+       nvars_rstr = nvars
+       call mpi_bcast(nvars_rstr, 1, MPI_INTEGER, master, mpicomm, mpierr)
+    case ('history')
+       nvars_hist = nvars
+       call mpi_bcast(nvars_hist, 1, MPI_INTEGER, master, mpicomm, mpierr)
+    case ('diag_phys')
+       nvars_diag = nvars
+       call mpi_bcast(nvars_diag, 1, MPI_INTEGER, master, mpicomm, mpierr)
+    end select
     
     ! Allocate
     select case (trim(adjustl(stream_name)))
     case ('restart')
-       allocate(stream_list_restart_indices(nvars))
+       allocate(stream_list_restart_indices(nvars_rstr))
     case ('history')
-       allocate(stream_list_history_indices(nvars))
+       allocate(stream_list_history_indices(nvars_hist))
+    case ('diag_phys')
+       allocate(stream_list_diag_indices(nvars_diag))
     end select
     
     ! Set
@@ -497,15 +522,19 @@ contains
           stream_list_restart_indices = indices
        case ('history')
           stream_list_history_indices = indices
+       case ('diag_phys')
+          stream_list_diag_indices = indices
        end select
     end if
     
     ! Broadcast data
     select case (trim(adjustl(stream_name)))
     case ('restart')
-       call mpi_bcast(stream_list_restart_indices, nvars, MPI_INTEGER, master, mpicomm, mpierr)
+       call mpi_bcast(stream_list_restart_indices, nvars_rstr, MPI_INTEGER, master, mpicomm, mpierr)
     case ('history')
-       call mpi_bcast(stream_list_history_indices, nvars, MPI_INTEGER, master, mpicomm, mpierr)
+       call mpi_bcast(stream_list_history_indices, nvars_hist, MPI_INTEGER, master, mpicomm, mpierr)
+    case ('diag_phys')
+       call mpi_bcast(stream_list_diag_indices,    nvars_diag, MPI_INTEGER, master, mpicomm, mpierr)
     end select
 
   end subroutine read_stream_list
@@ -1685,7 +1714,13 @@ contains
    case ('ugwp_oro_data')
       allocate(var_info_list, source=ugwp_oro_data_var_info_list)
    case ('diag_phys')
-      allocate(var_info_list, source=diag_phys_var_info_list)
+      ! If stream_list provided at runtime, only include requested fields.
+      if (allocated(stream_list_diag_indices)) then
+         allocate(var_info_list, source=diag_phys_var_info_list(stream_list_diag_indices))
+         ! Otherwise, include all available fields from stream (default).
+      else
+         allocate(var_info_list, source=diag_phys_var_info_list)
+      end if
    case default
       allocate(var_info_list(0))
 
