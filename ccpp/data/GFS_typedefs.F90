@@ -160,7 +160,7 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: vgrs (:,:)   => null()  !< v component of layer wind
     real (kind=kind_phys), pointer :: wgrs (:,:)   => null()  !< w component of layer wind
     real (kind=kind_phys), pointer :: vvl  (:,:)   => null()  !< layer mean vertical velocity in pa/sec
-    real (kind=kind_phys), pointer :: tgrs (:,:)   => null()  !< layer mean temperature in k
+    real (kind=kind_phys), pointer :: tgrs (:,:)   => null()  !< model layer mean temperature in k
     real (kind=kind_phys), pointer :: tgri (:,:)   => null()  !< level (interface) temperature in k
     real (kind=kind_phys), pointer :: qgrs (:,:,:) => null()  !< layer mean tracer concentration
 !SA-3D-TKE
@@ -194,16 +194,6 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: gv0 (:,:)   => null()  !< updated meridional wind
     real (kind=kind_phys), pointer :: gt0 (:,:)   => null()  !< updated temperature
     real (kind=kind_phys), pointer :: gq0 (:,:,:) => null()  !< updated tracers
-
-    real (kind=kind_phys), pointer :: dudt(:,:)   => null()  !<
-    real (kind=kind_phys), pointer :: dvdt(:,:)   => null()  !<
-    real (kind=kind_phys), pointer :: dtdt(:,:)   => null()  !<
-    real (kind=kind_phys), pointer :: dqdt(:,:,:) => null()  !<
-
-    real (kind=kind_phys), pointer      :: ten_u(:,:)         => null()
-    real (kind=kind_phys), pointer      :: ten_v(:,:)         => null()
-    real (kind=kind_phys), pointer      :: ten_t(:,:)         => null()
-    real (kind=kind_phys), pointer      :: ten_q(:,:,:)       => null()
 
     contains
       procedure :: create  => stateout_create  !<   allocate array data
@@ -2420,27 +2410,11 @@ module GFS_typedefs
     allocate (Stateout%gv0 (IM,Model%levs))
     allocate (Stateout%gt0 (IM,Model%levs))
     allocate (Stateout%gq0 (IM,Model%levs,Model%ntrac))
-    allocate (Stateout%dudt(IM,Model%levs))
-    allocate (Stateout%dvdt(IM,Model%levs))
-    allocate (Stateout%dtdt(IM,Model%levs))
-    allocate (Stateout%dqdt(IM,Model%levs,Model%ntrac))
-    allocate (Stateout%ten_u(IM,Model%levs))
-    allocate (Stateout%ten_v(IM,Model%levs))
-    allocate (Stateout%ten_t(IM,Model%levs))
-    allocate (Stateout%ten_q(IM,Model%levs,Model%ntrac))
 
     Stateout%gu0 = clear_val
     Stateout%gv0 = clear_val
     Stateout%gt0 = clear_val
     Stateout%gq0 = clear_val
-    Stateout%dudt = clear_val
-    Stateout%dvdt = clear_val
-    Stateout%dtdt = clear_val
-    Stateout%dqdt = clear_val
-    Stateout%ten_u = clear_val
-    Stateout%ten_v = clear_val
-    Stateout%ten_t = clear_val
-    Stateout%ten_q = clear_val
 
  end subroutine stateout_create
 
@@ -5043,6 +5017,7 @@ module GFS_typedefs
        Model%tempo_cfgs%re_snow_flag  = .true.
        Model%tempo_cfgs%re_ice_flag   = .true.
     end if
+
 !--- F-A MP parameters
     Model%rhgrd            = rhgrd
     Model%spec_adv         = spec_adv

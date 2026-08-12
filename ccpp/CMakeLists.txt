@@ -148,6 +148,7 @@ endif()
 if (MPAS)
   list(APPEND SCHEME_METADATA_FILES
     "${SCHEME_FILES_DIR}/Interstitials/UFS_SCM_NEPTUNE/GFS_rad_time_vary.mpas.meta"
+    "${SCHEME_FILES_DIR}/Interstitials/MPAS/MPAS_suite_interstitial_1.meta"
   )
 endif()
 
