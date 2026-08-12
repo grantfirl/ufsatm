@@ -8,7 +8,7 @@
   branch = develop
 [submodule "ccpp/physics"]
   path = ccpp/physics
-  url = https://github.com/grantfirl/ccpp-physics
+  url = https://github.com/dustinswales/ccpp-physics
   branch = feature/phys2dyn_radmp
 [submodule "upp"]
   path = upp
