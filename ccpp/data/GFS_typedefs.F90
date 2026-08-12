@@ -5038,7 +5038,11 @@ module GFS_typedefs
     ! DJS to Anders: Maybe we put more of these nml options into the TEMPO configuration type?
     Model%tempo_cfgs%aerosolaware_flag = ltaerosol
     Model%tempo_cfgs%hailaware_flag    = lthailaware
-
+    if (Model%dycore_active == Model%dycore_mpas) then
+       Model%tempo_cfgs%re_cloud_flag = .true.
+       Model%tempo_cfgs%re_snow_flag  = .true.
+       Model%tempo_cfgs%re_ice_flag   = .true.
+    end if
 !--- F-A MP parameters
     Model%rhgrd            = rhgrd
     Model%spec_adv         = spec_adv
