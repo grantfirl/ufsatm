@@ -320,7 +320,10 @@ module ufs_mpas_io
        var_info_type('rainc'                           , 'real'      , 1), &
        var_info_type('frainnc'                         , 'real'      , 1), &
        var_info_type('snownc'                          , 'real'      , 1), &
-       var_info_type('graupelnc'                       , 'real'      , 1)  &
+       var_info_type('graupelnc'                       , 'real'      , 1), &
+       var_info_type('re_cloud'                        , 'real'      , 2), &
+       var_info_type('re_ice'                          , 'real'      , 2), &
+       var_info_type('re_snow'                         , 'real'      , 2)  &
        ]
 contains
 

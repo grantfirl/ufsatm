@@ -901,25 +901,30 @@ contains
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_phys_diag(radiation,diagnostics)
+  subroutine ufs_mpas_phys_diag(control,radiation,diagnostics,tbd)
+    use GFS_typedefs,         only : GFS_control_type
     use GFS_typedefs,         only : GFS_radtend_type
     use GFS_typedefs,         only : GFS_diag_type
+    use GFS_typedefs,         only : GFS_tbd_type
     use mpas_kind_types,      only : RKIND
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
 
     ! Arguments
+    type(GFS_control_type), intent(in) :: control
     type(GFS_radtend_type), intent(in) :: radiation
     type(GFS_diag_type),    intent(in) :: diagnostics
+    type(GFS_tbd_type),     intent(in) :: tbd
 
     ! Locals
     type(mpas_pool_type), pointer :: diag_phys
-    real(RKIND),dimension(:),pointer :: swdnb,swdnbc,swupb,swupbc
-    real(RKIND),dimension(:),pointer :: lwdnb,lwdnbc,lwupb,lwupbc
-    real(RKIND),dimension(:,:),pointer :: refl10cm
-    real(RKIND),dimension(:),pointer :: rainc,rainnc,frainnc,snownc,graupelnc
-    real(RKIND),dimension(:),pointer :: raincv,rainncv,snowncv,graupelncv
-    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    real(RKIND), pointer :: swdnb(:),swdnbc(:),swupb(:),swupbc(:)
+    real(RKIND), pointer :: lwdnb(:),lwdnbc(:),lwupb(:),lwupbc(:)
+    real(RKIND), pointer :: re_cloud(:,:),re_ice(:,:),re_snow(:,:)
+    real(RKIND), pointer :: refl10cm(:,:)
+    real(RKIND), pointer :: rainc(:),rainnc(:),frainnc(:),snownc(:),graupelnc(:)
+    real(RKIND), pointer :: raincv(:),rainncv(:),snowncv(:),graupelncv(:)
+    integer,     pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol, ithread
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_phys_diag'
 
@@ -950,6 +955,9 @@ contains
     call mpas_pool_get_array(diag_phys,'rainncv'   , rainncv   )
     call mpas_pool_get_array(diag_phys,'snowncv'   , snowncv   )
     call mpas_pool_get_array(diag_phys,'graupelncv', graupelncv)
+    call mpas_pool_get_array(diag_phys,'re_cloud'  , re_cloud  )
+    call mpas_pool_get_array(diag_phys,'re_ice'    , re_ice    )
+    call mpas_pool_get_array(diag_phys,'re_snow'   , re_snow   )
 
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
@@ -975,6 +983,10 @@ contains
           frainnc(iCol)    = diagnostics%totice(iCol)
           snownc(iCol)     = diagnostics%totsnw(iCol)
           graupelnc(iCol)  = diagnostics%totgrp(iCol)
+          ! Hydrometeor effective radii
+          re_cloud(:,iCol) = tbd%phy_f3d(iCol,:,control%nleffr)
+          re_ice(:,iCol)   = tbd%phy_f3d(iCol,:,control%nieffr)
+          re_snow(:,iCol)  = tbd%phy_f3d(iCol,:,control%nseffr)
        end do
     end do
   end subroutine ufs_mpas_phys_diag  
