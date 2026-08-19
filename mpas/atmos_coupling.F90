@@ -854,15 +854,21 @@ contains
     use GFS_typedefs,         only : GFS_sfcprop_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
-    use mpas_kind_types,      only : RKIND
+    use mpas_kind_types,      only : RKIND, StrKIND
 
     ! Arguments
     type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
     ! Locals
-    type(mpas_pool_type), pointer :: mesh_pool, sfc_input
+    type(mpas_pool_type), pointer :: sfc_input, mesh
     integer :: i, ierr, iCol, ithread
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    real(RKIND), pointer :: landmask(:), sst(:), snow(:), tmn(:), albbck(:)
+    integer, pointer :: isltyp(:), ivgtyp(:), isice_lu, iswater_lu, landmask(:)
+    real(RKIND), pointer :: dzs(:,:), sh2o(:,:), smois(:,:), tslb(:,:) 
+    real(RKIND), pointer :: albbck(:), skintemp(:), snow(:), snowc(:), snowh(:)
+    real(RKIND), pointer :: sst(:), tmn(:), vegfra(:), seaice(:), xice(:), xland(:)
+    real(RKIND), pointer :: greenfrac(:,:), albedo12m(:,:)
+    real(RKIND), pointer :: ter(:), shdmin(:), shdmax(:), snoalb(:)
+    character(len=StrKIND), pointer :: mminlu
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_sfc_to_physics'
 
     ! Get openMP information
@@ -871,27 +877,78 @@ contains
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
 
     ! Access MPAS data pools.
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
-
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh', mesh)
     !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
-    call mpas_pool_get_array(mesh_pool, 'landmask',  landmask)
-    call mpas_pool_get_array(sfc_input, 'sst',       sst)
-    call mpas_pool_get_array(sfc_input, 'snow',      snow)
-    call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)
-    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck)
+    
+    !just grab the data from sfc_input as it exists; will figure out where/how to organize into GFS_typedefs later
+    call mpas_pool_get_array(sfc_input, 'dzs',       dzs) !dim: (nSoilLevels nCells Time); soil layer thickness (m)
+    call mpas_pool_get_array(sfc_input, 'isltyp',    isltyp) !dim (nCells); dominant soil category
+    call mpas_pool_get_array(sfc_input, 'ivgtyp',    ivgtyp) !dim (nCells); dominant vegetation category
+    !isice_lu and iswater_lu are not found in the sfc_input or mesh pools, despite being listed in the registry and found in .nc input file
+    !call mpas_pool_get_array(sfc_input, 'isice_lu',  isice_lu) !dim (nCells); index category for snow/ice
+    !call mpas_pool_get_array(sfc_input, 'iswater_lu',iswater_lu) !dim (nCells); index category for water
+    call mpas_pool_get_array(sfc_input, 'landmask',  landmask) !dim (nCells); land-ocean mask (1=land ; 0=ocean)
+    call mpas_pool_get_array(sfc_input, 'mminlu',    mminlu) ! (string) land use classification
+    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck) !dim (nCells Time); background surface albedo    
+    call mpas_pool_get_array(sfc_input, 'sh2o',      sh2o)  !dim (nSoilLevels nCells Time); soil equivalent liquid water (m3 m^{-3})
+    call mpas_pool_get_array(sfc_input, 'smois',     smois) !dim (nSoilLevels nCells Time); soil moisture (m3 m^{-3})
+    call mpas_pool_get_array(sfc_input, 'skintemp',  skintemp) !dim (nCells Time); ground or water surface temperature (K)
+    call mpas_pool_get_array(sfc_input, 'snow',      snow) !dim (nCells Time); snow water equivalent (kg m^-2)
+    call mpas_pool_get_array(sfc_input, 'snowc',     snowc) !dim (nCells Time); flag for snow on ground (=0 no snow; =1,otherwise
+    call mpas_pool_get_array(sfc_input, 'snowh',     snowh) !dim (nCells Time); physical snow depth (m)
+    call mpas_pool_get_array(sfc_input, 'sst',       sst)   !dim (nCells Time); sea-surface temperature (K)
+    call mpas_pool_get_array(sfc_input, 'ter',       ter)   !dim (nCells); terrain height (m)
+    call mpas_pool_get_array(sfc_input, 'tmn' ,      tmn)   !dim (nCells Time); deep soil temperature (K)
+    call mpas_pool_get_array(sfc_input, 'tslb',      tslb)  !dim (nSoilLevels nCells Time); soil layer temperature (K)
+    call mpas_pool_get_array(sfc_input, 'vegfra',    vegfra) !dim (nCells Time); vegetation fraction (percent)
+    call mpas_pool_get_array(sfc_input, 'seaice',    seaice) !dim (nCells Time); sea-ice flag (0=no seaice; =1 otherwise)
+    call mpas_pool_get_array(sfc_input, 'xice',      xice) !dim (nCells Time); fractional area coverage of sea-ice
+    call mpas_pool_get_array(sfc_input, 'xland',     xland) !dim (nCells Time); land-ocean mask (1=land including sea-ice ; 2=ocean)
+    call mpas_pool_get_array(sfc_input, 'shdmin',    shdmin) !dim (nCells); minimum fractional coverage of annual green vegetation fraction (percent)
+    call mpas_pool_get_array(sfc_input, 'shdmax',    shdmax) !dim (nCells); maximum fractional coverage of annual green vegetation fraction (percent)
+    call mpas_pool_get_array(sfc_input, 'snoalb',    snoalb) !dim (nCells); annual maximum snow albedo
+    call mpas_pool_get_array(sfc_input, 'greenfrac', greenfrac) !dim (nMonths nCells); monthly-mean climatological greenness fraction (percent)
+    call mpas_pool_get_array(sfc_input, 'albedo12m', albedo12m) !dim (nMonhts nCells); monthly-mean climatological surface albedo (percent)
+    write(*,*) 'shape/min/max dzs',SHAPE(dzs),minval(dzs),maxval(dzs)
+    write(*,*) 'shape/min/max isltyp',SHAPE(isltyp),minval(isltyp),maxval(isltyp)
+    write(*,*) 'shape/min/max ivgtyp',SHAPE(ivgtyp),minval(ivgtyp),maxval(ivgtyp)
+    !write(*,*) 'isice_lu, iswater_lu',isice_lu, iswater_lu
+    write(*,*) 'shape/min/max landmask',SHAPE(landmask),minval(landmask),maxval(landmask)
+    write(*,*) 'mminlu',mminlu
+    write(*,*) 'shape/min/max albbck',SHAPE(albbck),minval(albbck),maxval(albbck)
+    write(*,*) 'shape/min/max sh2o',SHAPE(sh2o),minval(sh2o),maxval(sh2o)
+    write(*,*) 'shape/min/max smois',SHAPE(smois),minval(smois),maxval(smois)
+    write(*,*) 'shape/min/max skintemp',SHAPE(skintemp),minval(skintemp),maxval(skintemp)
+    write(*,*) 'shape/min/max snow',SHAPE(snow),minval(snow),maxval(snow)
+    write(*,*) 'shape/min/max snowc',SHAPE(snowc),minval(snowc),maxval(snowc)
+    write(*,*) 'shape/min/max snowh',SHAPE(snowh),minval(snowh),maxval(snowh)
+    write(*,*) 'shape/min/max sst',SHAPE(sst),minval(sst),maxval(sst)
+    write(*,*) 'shape/min/max ter',SHAPE(ter),minval(ter),maxval(ter)
+    write(*,*) 'shape/min/max tmn',SHAPE(tmn),minval(tmn),maxval(tmn)
+    write(*,*) 'shape/min/max tslb)',SHAPE(tslb),minval(tslb),maxval(tslb)
+    write(*,*) 'shape/min/max vegfra',SHAPE(vegfra),minval(vegfra),maxval(vegfra)
+    write(*,*) 'shape/min/max seaice',SHAPE(seaice),minval(seaice),maxval(seaice)
+    write(*,*) 'shape/min/max xice',SHAPE(xice),minval(xice),maxval(xice)
+    write(*,*) 'shape/min/max xland',SHAPE(xland),minval(xland),maxval(xland)
+    write(*,*) 'shape/min/max shdmin',SHAPE(shdmin),minval(shdmin),maxval(shdmin)
+    write(*,*) 'shape/min/max shdmax',SHAPE(shdmax),minval(shdmax),maxval(shdmax)
+    write(*,*) 'shape/min/max snoalb',SHAPE(snoalb),minval(snoalb),maxval(snoalb)
+    write(*,*) 'shape/min/max greenfrac',SHAPE(greenfrac),minval(greenfrac),maxval(greenfrac)
+    write(*,*) 'shape/min/max albedo12m',SHAPE(albedo12m),minval(albedo12m),maxval(albedo12m)
+    STOP
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           !physics_sfcprop % slmsk(iCol) = landmask(iCol)
-          physics_sfcprop % tsfco(iCol) = sst(iCol)
-          physics_sfcprop % weasd(iCol) = snow(iCol)
-          physics_sfcprop % tg3(iCol)   = tmn(iCol)
+          !physics_sfcprop % tsfco(iCol) = sst(iCol)
+          !physics_sfcprop % weasd(iCol) = snow(iCol)
+          !physics_sfcprop % tg3(iCol)   = tmn(iCol)
           !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
           !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
-          physics_sfcprop % alvsf(iCol) = albbck(iCol)
-          physics_sfcprop % alvwf(iCol) = albbck(iCol)
-          physics_sfcprop % alnsf(iCol) = albbck(iCol)
-          physics_sfcprop % alnwf(iCol) = albbck(iCol)
+          !physics_sfcprop % alvsf(iCol) = albbck(iCol)
+          !physics_sfcprop % alvwf(iCol) = albbck(iCol)
+          !physics_sfcprop % alnsf(iCol) = albbck(iCol)
+          !physics_sfcprop % alnwf(iCol) = albbck(iCol)
        end do
     end do
 

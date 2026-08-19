@@ -25,24 +25,10 @@
     <subcycle loop="1">
       <scheme>MPAS_suite_interstitial_1</scheme>
       <scheme>GFS_surface_generic_pre</scheme>
-      <scheme>GFS_surface_composites_pre</scheme>
       <scheme>dcyc2t3</scheme>
-      <scheme>GFS_surface_composites_inter</scheme>
-      <scheme>GFS_suite_interstitial_2</scheme>
     </subcycle>
     <!-- Surface iteration loop -->
-    <subcycle loop="2">
-      <scheme>module_sf_mynnsfc_driver</scheme>
-      <scheme>GFS_surface_loop_control_part1</scheme>
-      <scheme>lsm_ruc</scheme>
-      <scheme>clm_lake</scheme>
-      <scheme>GFS_surface_loop_control_part2</scheme>
-    </subcycle>  
     <subcycle loop="1">
-      <scheme>GFS_surface_composites_post</scheme>
-      <scheme>sfc_diag</scheme>
-      <scheme>sfc_diag_post</scheme>
-      <scheme>GFS_surface_generic_post</scheme>  
       <scheme>GFS_photochemistry</scheme>
       <scheme>GFS_photochemistry_post</scheme>
     </subcycle>
