@@ -862,7 +862,8 @@ contains
     type(mpas_pool_type), pointer :: sfc_input, mesh
     integer :: i, ierr, iCol, ithread
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    integer, pointer :: isltyp(:), ivgtyp(:), isice_lu, iswater_lu, landmask(:)
+    integer, pointer :: isltyp(:), ivgtyp(:), landmask(:)!, isice_lu, iswater_lu 
+    integer :: isice_lu, iswater_lu
     real(RKIND), pointer :: dzs(:,:), sh2o(:,:), smois(:,:), tslb(:,:) 
     real(RKIND), pointer :: albbck(:), skintemp(:), snow(:), snowc(:), snowh(:)
     real(RKIND), pointer :: sst(:), tmn(:), vegfra(:), seaice(:), xice(:), xland(:)
@@ -936,9 +937,17 @@ contains
     write(*,*) 'shape/min/max snoalb',SHAPE(snoalb),minval(snoalb),maxval(snoalb)
     write(*,*) 'shape/min/max greenfrac',SHAPE(greenfrac),minval(greenfrac),maxval(greenfrac)
     write(*,*) 'shape/min/max albedo12m',SHAPE(albedo12m),minval(albedo12m),maxval(albedo12m)
+    
+    !temporarily hard-code values of isice_lu and iswater_lu (from x1.40962.init.nc), since they're not being imported from the sfc_input pool
+    isice_lu = 15
+    iswater_lu = 17
+    
+    
+    
     STOP
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          write(*,*) 'xland, seaice, xice, landmask',xland(iCol), seaice(iCol), xice(iCol), landmask(iCol)
           !physics_sfcprop % slmsk(iCol) = landmask(iCol)
           !physics_sfcprop % tsfco(iCol) = sst(iCol)
           !physics_sfcprop % weasd(iCol) = snow(iCol)
