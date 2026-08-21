@@ -790,6 +790,10 @@ contains
     logical                 :: mpas_print_global_minmax_vel        = .true.
     logical                 :: mpas_print_detailed_minmax_vel      = .true.
     logical                 :: mpas_print_global_minmax_sca        = .true.
+    ! Namelist "physics"
+    logical                 :: mpas_sfc_albedo                     = .false.
+    logical                 :: mpas_frac_seaice                    = .true.
+    character (len=StrKIND) :: mpas_lsm_scheme                     = 'sf_ruc'
 
     namelist /mpas_nhyd_model/ mpas_time_integration, mpas_time_integration_order, mpas_dt,   &
          mpas_split_dynamics_transport, mpas_number_of_sub_steps, mpas_dynamics_split_steps,  &
@@ -819,6 +823,8 @@ contains
     !
     namelist /mpas_printout/ mpas_print_global_minmax_vel, mpas_print_detailed_minmax_vel,    &
          mpas_print_global_minmax_sca
+    !
+    namelist /mpas_physics/ mpas_sfc_albedo, mpas_frac_seaice, mpas_lsm_scheme
 
     ! These configuration parameters must be set in the MPAS configPool, but can't be changed
     ! in UFS. *From CAM src/dynamics/mpas/dyn_comp.F90*
@@ -863,6 +869,9 @@ contains
           ! printout
           read(nml_funit, nml=mpas_printout, iostat=io)
           if (io .ne. 0) call mpas_log_write(subname // ' Reading in MPAS namelist mpas_printout',messageType=MPAS_LOG_CRIT)
+          ! "physics"
+          read(nml_funit, nml=mpas_physics, iostat=io)
+          if (io .ne. 0) call mpas_log_write(subname // ' Reading in MPAS namelist mpas_physics',messageType=MPAS_LOG_CRIT)
        endif
     endif
 
@@ -930,6 +939,10 @@ contains
     call mpi_bcast(mpas_print_global_minmax_vel,        1, mpi_logical,   master, mpicomm, mpierr)
     call mpi_bcast(mpas_print_detailed_minmax_vel,      1, mpi_logical,   master, mpicomm, mpierr)
     call mpi_bcast(mpas_print_global_minmax_sca,        1, mpi_logical,   master, mpicomm, mpierr)
+    !
+    call mpi_bcast(mpas_sfc_albedo,                     1, mpi_logical,   master, mpicomm, mpierr)
+    call mpi_bcast(mpas_frac_seaice,                    1, mpi_logical,   master, mpicomm, mpierr)
+    call mpi_bcast(mpas_lsm_scheme,               StrKIND, mpi_character, master, mpicomm, mpierr)
 
     !
     ! Set MPAS configuration information pool variables
@@ -992,6 +1005,10 @@ contains
     call mpas_pool_add_config(configPool, 'config_print_global_minmax_vel',        mpas_print_global_minmax_vel)
     call mpas_pool_add_config(configPool, 'config_print_detailed_minmax_vel',      mpas_print_detailed_minmax_vel)
     call mpas_pool_add_config(configPool, 'config_print_global_minmax_sca',        mpas_print_global_minmax_sca)
+    !
+    call mpas_pool_add_config(configPool, 'config_sfc_albedo',                     mpas_sfc_albedo)
+    call mpas_pool_add_config(configPool, 'config_frac_seaice',                    mpas_frac_seaice)
+    call mpas_pool_add_config(configPool, 'config_lsm_scheme',                     mpas_lsm_scheme)
 
     ! Set some configuration parameters that cannot be changed by UFSATM. *From CAM src/dynamics/mpas/dyn_comp.F90*
     call mpas_pool_add_config(configPool, 'config_num_halos',                      config_num_halos)
@@ -1053,6 +1070,10 @@ contains
        call mpas_log_write('   mpas_print_global_minmax_vel        = '//log2str(mpas_print_global_minmax_vel))
        call mpas_log_write('   mpas_print_detailed_minmax_vel      = '//log2str(mpas_print_detailed_minmax_vel))
        call mpas_log_write('   mpas_print_global_minmax_sca        = '//log2str(mpas_print_global_minmax_sca))
+       call mpas_log_write('   mpas_sfc_albedo                     = '//log2str(mpas_sfc_albedo))
+       call mpas_log_write('   mpas_frac_seaice                    = '//log2str(mpas_frac_seaice))
+       call mpas_log_write('   mpas_lsm_scheme                     = '//trim(mpas_lsm_scheme))
+
     end if
  end subroutine read_mpas_namelist
 
