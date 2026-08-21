@@ -15,7 +15,7 @@
 module ufs_mpas_io
   use mpas_derived_types,  only : core_type, domain_type, mpas_Clock_type
   use mpas_derived_types,  only : MPAS_Time_Type
-  use mpas_kind_types,     only : StrKIND
+  use mpas_kind_types,     only : StrKIND,RKIND
   use mpas_log,            only : mpas_log_write
   use mpas_derived_types,  only : MPAS_LOG_CRIT, MPAS_LOG_WARN
   use module_mpas_config,  only : pio_iotype, pio_stride, pio_numiotasks, pio_iodesc
@@ -323,8 +323,25 @@ module ufs_mpas_io
        var_info_type('graupelnc'                       , 'real'      , 1), &
        var_info_type('re_cloud'                        , 'real'      , 2), &
        var_info_type('re_ice'                          , 'real'      , 2), &
-       var_info_type('re_snow'                         , 'real'      , 2)  &
+       var_info_type('re_snow'                         , 'real'      , 2), &
+       var_info_type('sfc_emibck'                      , 'real'      , 1), &
+       var_info_type('mavail'                          , 'real'      , 1), &
+       var_info_type('sfc_albedo'                      , 'real'      , 1), &
+       var_info_type('sfc_emiss'                       , 'real'      , 1), &
+       var_info_type('thc'                             , 'real'      , 1), &
+       var_info_type('ust'                             , 'real'      , 1), &
+       var_info_type('xicem'                           , 'real'      , 1), &
+       var_info_type('z0'                              , 'real'      , 1), &
+       var_info_type('znt'                             , 'real'      , 1) &
        ]
+  !> #########################################################################################
+  !> Data from MPAS LANDUSE.TBL (read in during init)
+  !> #########################################################################################
+  integer :: lucats,lumatch,luseas,io,ic,is
+  character(len=StrKIND) :: lutype
+  real(kind=RKIND) :: li
+  real(kind=RKIND),dimension(:,:),allocatable :: albd,slmo,sfem,sfz0,therin,scfx,sfhc
+
 contains
 
   !> #########################################################################################
@@ -367,6 +384,110 @@ contains
 
   end subroutine ufs_mpas_open_lbc
 
+  !> #########################################################################################
+  !> 
+  !> #########################################################################################
+  subroutine ufs_mpas_landuse_read(mpicomm, me, master)
+    use module_mpas_config,  only : mpas_landuse_file, mpas_land_funit
+    use mpas_derived_types,  only : mpas_pool_type
+    use mpas_pool_routines,  only : mpas_pool_get_subpool, mpas_pool_get_array
+    use mpas_log,            only : mpas_log_write
+    use mpas_derived_types,  only : MPAS_LOG_ERR, MPAS_LOG_WARN, MPAS_LOG_CRIT
+    type(MPI_Comm), intent(in) :: mpicomm
+    integer,        intent(in) :: me, master
+    integer :: io,ic,is
+    character(len=StrKIND),pointer :: mminlu
+    type(mpas_pool_type), pointer :: sfc_input
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_landuse_read'
+
+    call mpas_log_write(subname //'   Reading/broadcasting MPAS landuse data ', messageType=MPAS_LOG_WARN)
+
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input',    sfc_input)
+    call mpas_pool_get_array(sfc_input,'mminlu'    ,mminlu  )
+
+    ! Read in data dimensions (master processor)
+    if (me == master) then
+       open(newunit = mpas_land_funit,file=trim(mpas_landuse_file),action='READ',status='OLD',iostat=io)
+       if (io /= 0) then
+          call mpas_log_write(subname // " failed to open LANDUSE.TBL", messageType=MPAS_LOG_CRIT)
+       endif
+
+       lumatch=0
+       find_lutype : do while (lumatch == 0)
+          read(unit=mpas_land_funit,fmt='(a35)') lutype
+          read(unit=mpas_land_funit,fmt=*) lucats,luseas
+
+          if(lutype .eq. mminlu)then
+             call mpas_log_write(subname //'   landuse type = ' // trim (lutype) // ' found '// stringify([lucats]) &
+                  // ' categories '// stringify([luseas])//' seasons', messageType=MPAS_LOG_WARN)
+             lumatch=1
+          else
+             call mpas_log_write(subname //'   skipping over lutype = ' // trim (lutype), messageType=MPAS_LOG_WARN)
+             do is = 1,luseas
+                read(unit=mpas_land_funit,fmt=*,iostat=io)
+                do ic = 1,lucats
+                   read(unit=mpas_land_funit,fmt=*,iostat=io)
+                enddo
+             enddo
+          endif
+       enddo find_lutype
+    endif
+
+    ! Broadcast data dimensions (all processors)
+    call mpi_barrier(mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure waiting for other MPI processes", messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(lutype,  strKIND,      MPI_CHARACTER, master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of lutype",  messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(luseas,  1,            MPI_INTEGER,   master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of luseas",  messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(lucats,  1,            MPI_INTEGER,   master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of lucats",  messageType=MPAS_LOG_CRIT)
+
+    ! Allocate space (all processors)
+    allocate(albd(lucats,luseas))
+    allocate(slmo(lucats,luseas))
+    allocate(sfem(lucats,luseas))
+    allocate(sfz0(lucats,luseas))
+    allocate(therin(lucats,luseas))
+    allocate(scfx(lucats,luseas))
+    allocate(sfhc(lucats,luseas))
+
+    ! Read data (master processor)
+    if (me == master) then
+       do is = 1, luseas
+          read(unit=mpas_land_funit,fmt=*,iostat=io)
+          if (io /= 0) then
+             call mpas_log_write(subname // " failure reading LANDUSE.TBL", messageType=MPAS_LOG_CRIT)
+          end if
+          do ic = 1, lucats
+             read(unit=mpas_land_funit,fmt=*) li,albd(ic,is),slmo(ic,is),sfem(ic,is),sfz0(ic,is), &
+                  therin(ic,is),scfx(ic,is),sfhc(ic,is)
+          end do
+       end do
+       close(mpas_land_funit)
+    end if
+
+    ! Broadcast data (all processors)
+    call mpi_barrier(mpicomm, io)
+    call mpi_bcast(albd,    size(albd),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of albd",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(slmo,    size(slmo),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of slmo",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(sfem,    size(sfem),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of sfem",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(sfz0,    size(sfz0),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of sfz0",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(therin,  size(therin), mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of therin",  messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(sfhc,    size(sfhc),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of sfhc",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(scfx,    size(scfx),   mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of scfx",    messageType=MPAS_LOG_CRIT)
+
+    call mpas_log_write(subname //'   Finished reading/broadcasting MPAS landuse data ', messageType=MPAS_LOG_WARN)
+
+  end subroutine ufs_mpas_landuse_read
+  
   !> #########################################################################################
   !> Procedure to read in stream_list (a.k.a File with fields to include in output stream)
   !> 
@@ -1142,7 +1263,6 @@ contains
                                   mpas_stream_type
    use mpas_io_streams,    only : mpas_createstream, mpas_streamaddfield
    use mpas_pool_routines, only : mpas_pool_add_config, mpas_pool_create_pool, mpas_pool_get_field
-   use mpas_kind_types,    only : StrKIND, RKIND
 
    type(mpas_pool_type), pointer, intent(out) :: mpas_pool
    type(mpas_stream_type), pointer, intent(out) :: mpas_stream
@@ -1886,7 +2006,6 @@ contains
                                   field2dreal, field3dreal, field4dreal, field5dreal
    use mpas_kind_types,    only : r4kind, r8kind
    use mpas_pool_routines, only : mpas_pool_get_field
-   use mpas_kind_types,    only : StrKIND, RKIND
 
    logical, allocatable, intent(out) :: var_is_present(:)
    logical, allocatable, intent(out) :: var_is_tkr_compatible(:)

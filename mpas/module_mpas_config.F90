@@ -82,8 +82,10 @@ module module_mpas_config
   integer :: mpas_errfile_funit
   character(len=256) :: mpas_logfilename = "mpas_out.log"
   integer :: mpas_logfile_funit
+  !>
+  character(len=256) :: mpas_landuse_file = "LANDUSE.TBL"
+  integer :: mpas_land_funit
 
-  
   !> PIO
   type(iosystem_desc_t), pointer :: pio_subsystem_ic
   type(iosystem_desc_t), pointer :: pio_subsystem_lbc
