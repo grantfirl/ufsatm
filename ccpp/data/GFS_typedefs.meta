@@ -454,6 +454,27 @@
   dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
+[zgrid]
+  standard_name = height_at_layer_center
+  long_name = height at layer center
+  units = m
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
+[zigrid]
+  standard_name = height_at_level_interface
+  long_name = height at	level interface
+  units = m
+  dimensions = (horizontal_dimension,vertical_interface_dimension)
+  type = real
+  kind = kind_phys
+[dzgrid]
+  standard_name = layer_thickness
+  long_name = layer thickness
+  units = m
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
 
 ########################################################################
 [ccpp-table-properties]

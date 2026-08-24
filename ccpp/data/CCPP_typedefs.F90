@@ -334,7 +334,6 @@ module CCPP_typedefs
     real (kind=kind_phys), pointer      :: tv_lay(:,:)               => null()  !<
     real (kind=kind_phys), pointer      :: qs_lay(:,:)               => null()  !<
     real (kind=kind_phys), pointer      :: q_lay(:,:)                => null()  !<
-    real (kind=kind_phys), pointer      :: deltaZ(:,:)               => null()  !<
     real (kind=kind_phys), pointer      :: deltaZc(:,:)              => null()  !<
     real (kind=kind_phys), pointer      :: deltaP(:,:)               => null()  !<
     real (kind=kind_phys), pointer      :: cloud_overlap_param(:,:)  => null()  !< Cloud overlap parameter
@@ -714,7 +713,6 @@ contains
     if (Model%do_RRTMGP) then
        allocate (Interstitial%tracer               (ixs:ixe, Model%levs,Model%ntrac))
        allocate (Interstitial%q_lay                (ixs:ixe, Model%levs))
-       allocate (Interstitial%deltaZ               (ixs:ixe, Model%levs))
        allocate (Interstitial%deltaZc              (ixs:ixe, Model%levs))
        allocate (Interstitial%deltaP               (ixs:ixe, Model%levs))
        allocate (Interstitial%p_lev                (ixs:ixe, Model%levs+1))
@@ -1063,7 +1061,6 @@ contains
     if (Model%do_RRTMGP) then
        deallocate (Interstitial%tracer)
        deallocate (Interstitial%q_lay)
-       deallocate (Interstitial%deltaZ)
        deallocate (Interstitial%deltaZc)
        deallocate (Interstitial%deltaP)
        deallocate (Interstitial%p_lev)
@@ -1621,7 +1618,6 @@ contains
     if (Model%do_RRTMGP) then
        Interstitial%tracer                      = clear_val
        Interstitial%q_lay                       = clear_val
-       Interstitial%deltaZ                      = clear_val
        Interstitial%deltaZc                     = clear_val
        Interstitial%deltaP                      = clear_val
        Interstitial%p_lev                       = clear_val

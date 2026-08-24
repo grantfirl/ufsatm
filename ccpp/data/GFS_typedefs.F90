@@ -154,6 +154,11 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: prsl  (:,:) => null()   !< model layer mean pressure Pa
     real (kind=kind_phys), pointer :: prslk (:,:) => null()   !< exner function = (p/p0)**rocp
 
+!--- layer and level heights
+    real (kind=kind_phys), pointer :: zgrid (:,:) => null()   !< layer height (m)
+    real (kind=kind_phys), pointer :: zigrid(:,:) => null()   !< level height (m)
+    real (kind=kind_phys), pointer :: dzgrid(:,:) => null()   !< layer thickness (m)
+
 !--- prognostic variables
     real (kind=kind_phys), pointer :: pgr  (:)     => null()  !< surface pressure (Pa) real
     real (kind=kind_phys), pointer :: ugrs (:,:)   => null()  !< u component of layer wind
@@ -2352,6 +2357,15 @@ module GFS_typedefs
     Statein%phil  = clear_val
     Statein%prsl  = clear_val
     Statein%prslk = clear_val
+
+    !--- layer and level heights
+    allocate (Statein%zgrid  (IM,Model%levs))
+    allocate (Statein%zigrid (IM,Model%levs+1))
+    allocate (Statein%dzgrid (IM,Model%levs))
+
+    Statein%zgrid  = clear_val
+    Statein%zigrid = clear_val
+    Statein%dzgrid = clear_val
 
     !--- shared radiation and physics variables
     allocate (Statein%vvl  (IM,Model%levs))
