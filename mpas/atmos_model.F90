@@ -42,6 +42,9 @@ module atmos_model_mod
 #endif
   implicit none
 
+  ! Day of year. Surface properties are updated daily using this time index.
+  integer :: doyc
+
   private
 
   public :: dycore_only
@@ -101,7 +104,9 @@ contains
     use ufs_mpas_subdriver,     only : MPAS_control_type
     use ufs_mpas_subdriver,     only : ufs_mpas_init
     use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc, ufs_mpas_read_stream_lists
+    use ufs_mpas_io,            only : ufs_mpas_landuse_read
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_landuse_update
     use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
@@ -252,21 +257,26 @@ contains
     
     ! Update time (UFS specific time formatting array)
     Cfg%bdat(:) = 0
-    call ESMF_TimeGet (StartTime, YY=Cfg%bdat(1),MM=Cfg%bdat(2),DD=Cfg%bdat(3),H=Cfg%bdat(4),M=Cfg%bdat(5),S=Cfg%bdat(6),rc=rc)
+    call ESMF_TimeGet (StartTime, YY=Cfg%bdat(1),MM=Cfg%bdat(2),DD=Cfg%bdat(3),H=Cfg%bdat(5),M=Cfg%bdat(6),S=Cfg%bdat(7),rc=rc)
     Cfg%cdat(:) = 0
-    call ESMF_TimeGet (CurrTime,  YY=Cfg%cdat(1),MM=Cfg%cdat(2),DD=Cfg%cdat(3),H=Cfg%cdat(4),M=Cfg%cdat(5),S=Cfg%cdat(6),rc=rc)
+    call ESMF_TimeGet (CurrTime,  YY=Cfg%cdat(1),MM=Cfg%cdat(2),DD=Cfg%cdat(3),H=Cfg%cdat(5),M=Cfg%cdat(6),S=Cfg%cdat(7),rc=rc)
 
     ! Read in physics namelist and allocate data containers.
     Cfg%fn_nml = nml_filename
     call MPAS_initialize(UFSATM_control, UFSATM_intdiag, UFSATM_grid, UFSATM_tbd, UFSATM_sfcprop, &
          UFSATM_statein, UFSATM_stateout, UFSATM_cldprop, UFSATM_radtend, UFSATM_coupling, Cfg)
 
+    !> Read and initialize landuse fields needed by physics.
+    call ufs_mpas_landuse_read(Cfg%mpi_comm, Cfg%me, Cfg%master)
+    call ESMF_TimeGet(CurrTime, dayOfYear=doyc, rc=rc)
+    call ufs_mpas_landuse_update(doyc)
+
     ! Populate UFSATM data containers with MPAS "input" stream. We need to do this becuase
     ! we are calling the physics before the MPAS dynamical core.
     !
     call ufs_mpas_grid_to_physics(UFSATM_grid)
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop, UFSATM_control)
-    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
+    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
     ! Register CCPP
     call CCPP_step (step="register", nblks=Atmos % nblks, ierr=ierr, dycore='mpas')
@@ -327,21 +337,28 @@ contains
   !> #########################################################################################
   subroutine atmos_model_radiation_physics(Atmos)
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_physics_to_mpas
-    use atmos_coupling_mod,     only : ufs_mpas_phys_diag
+    use atmos_coupling_mod,     only : ufs_mpas_phys_diag, ufs_mpas_landuse_update
     type (atmos_control_type), intent(inout) :: Atmos
     ! Locals
     integer :: ierr
     real(MPAS_kind_phys) :: start_time, stop_time
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_radiation_physics'
-    integer :: jdat(8), rc
+    integer :: jdat(8), rc, doy
 
     ! Update physics time
     jdat(:) = 0
     call ESMF_TimeGet (Atmos%CurrTime, YY=jdat(1),MM=jdat(2),DD=jdat(3),H=jdat(5),M=jdat(6),S=jdat(7),rc=rc)
     UFSATM_control%jdat(:) = jdat(:)
 
+    ! Update surface properties for this day?
+    if (doy .gt. doyc) then
+       call ESMF_TimeGet(Atmos%CurrTime, dayOfYear=doy, rc=rc)
+       call ufs_mpas_landuse_update(doy)
+       doyc = doy
+    endif
+    
     ! Populate physics inputs with MPAS data.
-    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop)
+    call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
     ! Call CCPP Timestep_initialize Group
     start_time = MPI_Wtime()

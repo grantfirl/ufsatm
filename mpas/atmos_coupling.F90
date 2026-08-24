@@ -4,16 +4,19 @@
 !>
 ! ###########################################################################################
 module atmos_coupling_mod
-  use mpas_kind_types, only : mpas_kind => RKIND
+  use mpas_kind_types, only : strKIND, RKIND
   use ufs_mpas_io,     only : domain_ptr
+  use ufs_mpas_io,     only : lucats,lumatch,luseas,lutype,li,albd,slmo,sfem,sfz0,therin,scfx,sfhc
   
   implicit none
+
   public :: ufs_physics_to_mpas
   public :: ufs_mpas_to_physics
   public :: ufs_microphysics_to_mpas
   public :: ufs_mpas_to_microphysics
   public :: ufs_mpas_grid_to_physics
   public :: ufs_mpas_sfc_to_physics
+  public :: ufs_mpas_landuse_update
   
 contains
   !> #########################################################################################
@@ -27,20 +30,20 @@ contains
   !> CCPP "state" needed by the physics.
   !>
   !> #########################################################################################
-  subroutine ufs_mpas_to_physics(physics_state, surface_state)
-    use GFS_typedefs,         only : GFS_statein_type, GFS_sfcprop_type
+  subroutine ufs_mpas_to_physics(physics_state, surface_state, radiation)
+    use GFS_typedefs,         only : GFS_statein_type, GFS_sfcprop_type, GFS_radtend_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use atm_core,             only : atm_compute_output_diagnostics
-    use mpas_kind_types,      only : RKIND
     use mpas_constants,       only : gravity, rvord
 
     ! Arguments
     type(GFS_statein_type),   intent(inout) :: physics_state
     type(GFS_sfcprop_type),   intent(inout) :: surface_state
+    type(GFS_radtend_type),   intent(inout) :: radiation
 
     ! Locals
-    type(mpas_pool_type), pointer :: state_pool, diag_pool, mesh_pool
+    type(mpas_pool_type), pointer :: state_pool, diag_pool, mesh_pool, diag_phys
     integer :: iCol, iLay, iTracer, ithread
     integer, pointer :: nCellsSolve, num_scalars, nVertLevels, index_qv
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
@@ -49,6 +52,7 @@ contains
     real(kind=RKIND), pointer :: ux(:,:), uy(:,:), theta_m(:,:), rho_zz(:,:), zgrid(:,:), zz(:,:)
     real(kind=RKIND), pointer :: exner(:,:), tracers(:,:,:), pressure_b(:,:), pressure_p(:,:)
     real(kind=RKIND), pointer :: w(:,:), surface_pressure(:),  prsi(:,:), prsl(:,:), rho(:,:), dz(:,:)
+    real(RKIND), pointer :: sfc_albedo(:),sfc_emiss(:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_to_physics'
 
     ! Get openMP information
@@ -60,6 +64,7 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics',  diag_phys)
 
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
@@ -80,7 +85,9 @@ contains
     call mpas_pool_get_array(diag_pool,  'pressure_base',          pressure_b)
     call mpas_pool_get_array(diag_pool,  'pressure_p',             pressure_p)
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       surface_pressure)
-
+    call mpas_pool_get_array(diag_phys,  'sfc_albedo',             sfc_albedo)
+    call mpas_pool_get_array(diag_phys,  'sfc_emiss' ,             sfc_emiss)
+ 
     ! Local variables
     allocate(prsl(nCellsSolve, nVertLevels))
     allocate(prsi(nCellsSolve, nVertLevels + 1))
@@ -133,6 +140,17 @@ contains
           ! Set surface temperature to lowest level temperature (revisit for coupling)
           theta = theta_m(1,iCol) / (1._RKIND + rvord * tracers(index_qv,1,iCol))
           surface_state % tsfc(iCol) = theta*exner(1,iCol)
+          !
+          ! Surface radiative properties
+          ! DJS2026:
+          ! For UFS-FV3, these fields come from set_emis() and set_alb() in
+          ! GFS_radiation_surface.F90. The surface albedo also has spectral dependencies (nIR/uvvus)
+          !
+          ! For UFS-MPAS, these fields come from the MPAS sfc_input pool, which can be updated (daily)
+          ! by calling ufs_mpas_landuse_update. The MPAS surface albedo is broadband,
+          ! so we need to asign the same albedo for all channels in GFS_radiation_surface.
+          radiation % semis(iCol) = sfc_emiss(iCol)
+          radiation % salb(iCol)  = sfc_albedo(iCol)
        end do
     end do
 
@@ -240,7 +258,6 @@ contains
     use GFS_typedefs,       only : GFS_stateout_type
     use mpas_derived_types, only : mpas_pool_type
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
-    use mpas_kind_types,    only : RKIND
     use mpas_constants,     only : rv, rgas, gravity
 
     ! Arguments
@@ -490,7 +507,6 @@ contains
     use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array
     use mpas_pool_routines, only : mpas_pool_get_dimension, mpas_pool_get_config
     use mpas_constants,     only : gravity, rvord, rv, rgas, p0, cp
-    use mpas_kind_types,    only : RKIND
 
     ! Arguments
     type(GFS_stateout_type),     intent(in   ) :: physics_state
@@ -665,7 +681,6 @@ contains
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
     use mpas_constants,       only : rvord
-    use mpas_kind_types,    only : RKIND
 
     ! Arguments
     type(GFS_stateout_type), intent(inout) :: physics_state
@@ -763,7 +778,6 @@ contains
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension
     use mpas_pool_routines,   only : mpas_pool_get_array, mpas_pool_get_config
-    use mpas_kind_types,      only : RKIND
     use mpas_constants,       only : pii
     use mpas_log,             only : mpas_log_write
     use mpas_derived_types,   only : MPAS_LOG_ERR, MPAS_LOG_WARN, MPAS_LOG_CRIT
@@ -1026,7 +1040,6 @@ contains
     use GFS_typedefs,         only : GFS_radtend_type
     use GFS_typedefs,         only : GFS_diag_type
     use GFS_typedefs,         only : GFS_tbd_type
-    use mpas_kind_types,      only : RKIND
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
 
@@ -1041,6 +1054,7 @@ contains
     real(RKIND), pointer :: swdnb(:),swdnbc(:),swupb(:),swupbc(:)
     real(RKIND), pointer :: lwdnb(:),lwdnbc(:),lwupb(:),lwupbc(:)
     real(RKIND), pointer :: re_cloud(:,:),re_ice(:,:),re_snow(:,:)
+    real(RKIND), pointer :: sfc_albedo(:),sfc_emiss(:)
     real(RKIND), pointer :: refl10cm(:,:)
     real(RKIND), pointer :: rainc(:),rainnc(:),frainnc(:),snownc(:),graupelnc(:)
     real(RKIND), pointer :: raincv(:),rainncv(:),snowncv(:),graupelncv(:)
@@ -1078,6 +1092,8 @@ contains
     call mpas_pool_get_array(diag_phys,'re_cloud'  , re_cloud  )
     call mpas_pool_get_array(diag_phys,'re_ice'    , re_ice    )
     call mpas_pool_get_array(diag_phys,'re_snow'   , re_snow   )
+    call mpas_pool_get_array(diag_phys,'sfc_albedo', sfc_albedo)
+    call mpas_pool_get_array(diag_phys,'sfc_emiss' , sfc_emiss )
 
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
@@ -1107,7 +1123,131 @@ contains
           re_cloud(:,iCol) = tbd%phy_f3d(iCol,:,control%nleffr)
           re_ice(:,iCol)   = tbd%phy_f3d(iCol,:,control%nieffr)
           re_snow(:,iCol)  = tbd%phy_f3d(iCol,:,control%nseffr)
+          ! Surface radiative properties
+          sfc_albedo(iCol) = radiation%sfalb(iCol)
+          sfc_emiss(iCol)  = radiation%semis(iCol)
        end do
     end do
-  end subroutine ufs_mpas_phys_diag  
+  end subroutine ufs_mpas_phys_diag
+
+  !> ########################################################################################
+  !> This routine computes physics surface properties using data from the LANDUSE.TBL (read in
+  !> during model initialization), and MPAS grid information.
+  !> Called once per calendar day.
+  !> ########################################################################################
+  subroutine ufs_mpas_landuse_update(julday)
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension
+    use mpas_log,             only : mpas_log_write
+    use mpas_derived_types,   only : MPAS_LOG_ERR, MPAS_LOG_WARN, MPAS_LOG_CRIT
+    use mpas_pool_routines,   only : mpas_pool_get_array, mpas_pool_get_config
+    implicit none
+    ! Arguments
+    integer, intent(in) :: julday
+    ! Locals
+    type(mpas_pool_type), pointer :: sfc_input, diag_phys, mesh
+    real(kind=RKIND), pointer :: latCell(:),snoalb(:),snowc(:),xice(:),albbck(:),embck(:),&
+         xicem(:),xland(:),z0(:),mavail(:),sfc_albedo(:),sfc_emiss(:),thc(:),ust(:),znt(:)
+    integer, pointer :: nCells,isice,iswater,ivgtyp(:),landmask(:)
+    logical,pointer :: config_frac_seaice, config_sfc_albedo
+    integer :: iCell,isn,is
+    real(kind=RKIND) :: xice_threshold
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_landuse_update'
+
+    call mpas_log_write(subname //'   Updating MPAS surface properting', messageType=MPAS_LOG_WARN)
+
+    ! Are these really physics flags? (i.e. Do the scheme need theses? Or just here for the surface init?)
+    call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_frac_seaice', config_frac_seaice)
+    call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_sfc_albedo' , config_sfc_albedo)
+
+    ! Access MPAS data pools.
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics', diag_phys)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',         mesh)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input',    sfc_input)
+
+    ! Dimensions
+    call mpas_pool_get_dimension(mesh,'nCells',nCells)
+
+    ! Arrays
+    call mpas_pool_get_array(mesh,     'latCell'   ,latCell    )
+    call mpas_pool_get_array(sfc_input,'isice_lu'  ,isice      )
+    call mpas_pool_get_array(sfc_input,'iswater_lu',iswater    )
+    call mpas_pool_get_array(sfc_input,'landmask'  ,landmask   )
+    call mpas_pool_get_array(sfc_input,'ivgtyp'    ,ivgtyp     )
+    call mpas_pool_get_array(sfc_input,'snoalb'    ,snoalb     )
+    call mpas_pool_get_array(sfc_input,'snowc'     ,snowc      )
+    call mpas_pool_get_array(sfc_input,'xice'      ,xice       )
+    call mpas_pool_get_array(sfc_input,'xland'     ,xland      )
+    call mpas_pool_get_array(sfc_input,'sfc_albbck',albbck     )
+    call mpas_pool_get_array(diag_phys,'sfc_emibck',embck      )
+    call mpas_pool_get_array(diag_phys,'mavail'    ,mavail     )
+    call mpas_pool_get_array(diag_phys,'sfc_albedo',sfc_albedo )
+    call mpas_pool_get_array(diag_phys,'sfc_emiss' ,sfc_emiss  )
+    call mpas_pool_get_array(diag_phys,'thc'       ,thc        )
+    call mpas_pool_get_array(diag_phys,'ust'       ,ust        )
+    call mpas_pool_get_array(diag_phys,'xicem'     ,xicem      )
+    call mpas_pool_get_array(diag_phys,'z0'        ,z0         )
+    call mpas_pool_get_array(diag_phys,'znt'       ,znt        )
+
+    if(.not. config_frac_seaice) then
+       xice_threshold = 0.5_RKIND
+    elseif(config_frac_seaice) then
+       xice_threshold = 0.02
+    endif
+
+    do iCell = 1, nCells
+       !finds the season as function of julian day (summer=1, winter=2): summer in the Northern
+       !Hemisphere is defined between March 15th and September 15th (winter otherwise).
+       isn = 1
+       if(julday.lt.105 .or. julday.ge.288) isn=2
+       if(latCell(iCell) .lt. 0.) isn=3-isn
+
+       is = ivgtyp(iCell)
+
+       !set no data points to water:
+       if(is.eq.0) is = iswater
+       if(.not. config_sfc_albedo) albbck(iCell) = albd(is,isn)/100.
+       sfc_albedo(iCell) = albbck(iCell)
+
+       if(snowc(iCell) .gt. 0.5) then
+          albbck(iCell) = albd(isice,isn) / 100.
+          if(config_sfc_albedo) then
+             sfc_albedo(iCell) = snoalb(iCell)
+          else
+             sfc_albedo(iCell) = albbck(iCell) / (1+scfx(is,isn))
+          endif
+       endif
+       thc(iCell)    = therin(is,isn) / 100.
+       z0(iCell)     = sfz0(is,isn) / 100.
+       znt(iCell)    = z0(icell)
+       embck(iCell)  = sfem(is,isn)
+       sfc_emiss(iCell) = embck(iCell)
+
+       if(associated(mavail)) mavail(iCell) = slmo(is,isn)
+       if(associated(ust)) ust(iCell) = 0.0001
+
+       !set sea-ice points to land with ice/snow surface properties:
+       if(xice(iCell) .ge. xice_threshold) then
+          albbck(iCell) = albd(isice,isn) / 100.
+          embck(iCell)  = sfem(isice,isn)
+          if(config_frac_seaice) then
+             !0.08 is the albedo over open water.
+             !0.98 is the emissivity over open water.
+             sfc_albedo(iCell) = xice(iCell)*albbck(iCell) + (1-xice(iCell))*0.08
+             sfc_emiss(iCell)  = xice(iCell)*embck(iCell)  + (1-xice(iCell))*0.98
+          else
+             sfc_albedo(iCell) = albbck(iCell)
+             sfc_emiss(iCell)  = embck(iCell)
+          endif
+          thc(iCell) = therin(isice,isn) / 100.
+          z0(icell)  = sfz0(isice,isn) / 100.
+          znt(iCell) = z0(iCell)
+
+          if(associated(mavail)) mavail(iCell) = slmo(isice,isn)
+       endif
+    end do ! nCells
+
+    call mpas_log_write(subname //'   Finished updating MPAS surface properties ', messageType=MPAS_LOG_WARN)
+  end subroutine ufs_mpas_landuse_update
+  
 end module atmos_coupling_mod

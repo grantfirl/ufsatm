@@ -1972,6 +1972,7 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: coszen(:)    => null()  !< mean cos of zenith angle over rad call period
     real (kind=kind_phys), pointer :: tsflw (:)    => null()  !< surface air temp during lw calculation in k
     real (kind=kind_phys), pointer :: semis (:)    => null()  !< surface lw emissivity in fraction
+    real (kind=kind_phys), pointer :: salb  (:)    => null()  !< surface sw albedo 
     real (kind=kind_phys), pointer :: ext550 (:,:) => null()  !< aerosol optical extinction from radiation
 
 !--- In/Out (???) (radiaition only)
@@ -4642,7 +4643,8 @@ module GFS_typedefs
        Model%latr             = gny         ! number of latitudinal points from pole to pole
     endif
     if (Model%dycore_active == Model%dycore_mpas) then
-
+       Model%nx = sum(blksz)
+       Model%ny = 1
     end if
     Model%levs             = levs
     Model%levsp1           = Model%levs + 1
@@ -7883,6 +7885,7 @@ module GFS_typedefs
     allocate (Radtend%coszen (IM))
     allocate (Radtend%tsflw  (IM))
     allocate (Radtend%semis  (IM))
+    allocate (Radtend%salb   (IM))
     allocate (Radtend%ext550 (IM,Model%levs))
 
     Radtend%htrsw  = clear_val
@@ -7891,6 +7894,7 @@ module GFS_typedefs
     Radtend%coszen = clear_val
     Radtend%tsflw  = clear_val
     Radtend%semis  = clear_val
+    Radtend%salb   = clear_val
     Radtend%ext550 = clear_val
 
 !--- In/Out (???) (radiation only)
