@@ -850,13 +850,14 @@ contains
 !> Procedure to transfer MPAS information to physics srfprop DDT
 !>
 !> #########################################################################################
-  subroutine ufs_mpas_sfc_to_physics(physics_sfcprop)
-    use GFS_typedefs,         only : GFS_sfcprop_type
+  subroutine ufs_mpas_sfc_to_physics(physics_sfcprop, physics_control)
+    use GFS_typedefs,         only : GFS_sfcprop_type, GFS_control_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
     use mpas_kind_types,      only : RKIND, StrKIND
 
     ! Arguments
+    type(GFS_control_type),      intent(in) :: physics_control
     type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
     ! Locals
     type(mpas_pool_type), pointer :: sfc_input, mesh
@@ -942,24 +943,77 @@ contains
     isice_lu = 15
     iswater_lu = 17
     
-    
-    
-    STOP
     do ithread = 1,nThreads
-       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          write(*,*) 'xland, seaice, xice, landmask',xland(iCol), seaice(iCol), xice(iCol), landmask(iCol)
-          !physics_sfcprop % slmsk(iCol) = landmask(iCol)
-          !physics_sfcprop % tsfco(iCol) = sst(iCol)
-          !physics_sfcprop % weasd(iCol) = snow(iCol)
-          !physics_sfcprop % tg3(iCol)   = tmn(iCol)
-          !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
-          !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
-          !physics_sfcprop % alvsf(iCol) = albbck(iCol)
-          !physics_sfcprop % alvwf(iCol) = albbck(iCol)
-          !physics_sfcprop % alnsf(iCol) = albbck(iCol)
-          !physics_sfcprop % alnwf(iCol) = albbck(iCol)
-       end do
+      do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+        if (landmask(iCol) == 1) then
+          physics_sfcprop % slmsk(iCol) == 1.0_RKIND
+        elseif (seaice(iCol) > 0.0_RKIND) then
+          physics_sfcprop % slmsk(iCol) == 2.0_RKIND
+        endif
+        physics_sfcprop % tsfco(iCol) = sst(iCol)
+        physics_sfcprop % weasd(iCol) = snow(iCol)  !weasd is in mm, snow is in kg m-2; after dividing by density of water and converting to mm, these are equivalent
+        physics_sfcprop % tg3(iCol)   = tmn(iCol)
+        !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
+        !zorl (roughness length) - extra data/calcs needed
+        !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
+        !physics_sfcprop % alvsf(iCol) = albbck(iCol)
+        !physics_sfcprop % alvwf(iCol) = albbck(iCol)
+        !physics_sfcprop % alnsf(iCol) = albbck(iCol)
+        !physics_sfcprop % alnwf(iCol) = albbck(iCol)
+        !physics_sfcprop % facsf(iCol) = ? - from gcycle?
+        !physics_sfcprop % facwf(iCol) = ? - from gcycle?
+        physics_sfcprop % vfrac(iCol) = vegfra(iCol)*0.01_RKIND !conversion to decimal from percent
+        !physics_sfcprop % canopy(iCol) = ?
+      end do
     end do
+    
+    !from fv3atm_sfc_io/sfc_io_apply_safeguards()
+    if(physics_control%frac_grid) then ! 3-way composite
+      ! do ithread = 1,nThreads
+      !   do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+      ! 
+      !   end do
+      ! end do
+    else
+      do ithread = 1,nThreads
+        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          
+        end do
+      end do
+    end if  
+          !from fv3atm_sfc_io/sfc_io_apply_safeguards()
+          if(physics_control%frac_grid) then ! 3-way composite
+            !$omp parallel do default(shared) private(nb, ix, im, tem, tem1)
+            do nb = 1, Atm_block%nblks
+              do ix = 1, Atm_block%blksz(nb)
+                im = Model%chunk_begin(nb)+ix-1
+                Sfcprop%tsfco(im) = max(con_tice, Sfcprop%tsfco(im)) ! this may break restart reproducibility
+                tem1 = one - Sfcprop%landfrac(im)
+                tem  = tem1 * Sfcprop%fice(im) ! tem = ice fraction wrt whole cell
+                Sfcprop%tsfc(im) = Sfcprop%tsfcl(im) * Sfcprop%landfrac(im) &
+                     + Sfcprop%tisfc(im) * tem                      &
+                     + Sfcprop%tsfco(im) * (tem1-tem)
+              enddo
+            enddo
+          else
+            !$omp parallel do default(shared) private(nb, ix, im, tem)
+            do nb = 1, Atm_block%nblks
+              do ix = 1, Atm_block%blksz(nb)
+                im = Model%chunk_begin(nb)+ix-1
+                if (Sfcprop%slmsk(im) == 1) then
+                  Sfcprop%tsfc(im) = Sfcprop%tsfcl(im)
+                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc land ',nb,ix,Sfcprop%tsfcl(im)
+                elseif(Sfcprop%fice(im) > 0.0)then
+                  Sfcprop%tsfc(im) = Sfcprop%tisfc(im)
+                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc ice  ',nb,ix,Sfcprop%tisfc(im)
+                else
+                  Sfcprop%tsfc(im) = Sfcprop%tsfco(im)
+                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc water ',nb,ix,Sfcprop%tsfco(im)
+                endif
+              enddo
+            enddo
+          endif
+    STOP
 
   end subroutine ufs_mpas_sfc_to_physics
 
