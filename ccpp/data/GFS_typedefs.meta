@@ -9376,6 +9376,13 @@
   dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
+[salb]
+  standard_name = surface_shortwave_albedo
+  long_name = surface sw albedo in fraction
+  units = frac
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
 [ext550]
   standard_name = aerosol_optical_depth_at_550nm
   long_name = 3d optical extinction for total aerosol species
