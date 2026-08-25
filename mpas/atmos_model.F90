@@ -106,7 +106,7 @@ contains
     use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc, ufs_mpas_read_stream_lists
     use ufs_mpas_io,            only : ufs_mpas_landuse_read
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
-    use atmos_coupling_mod,     only : ufs_mpas_landuse_update
+    use atmos_coupling_mod,     only : ufs_mpas_landuse_update, ufs_mpas_gwd_to_physics
     use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
@@ -276,6 +276,7 @@ contains
     !
     call ufs_mpas_grid_to_physics(UFSATM_grid)
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
+    call ufs_mpas_gwd_to_physics(UFSATM_sfcprop)
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
     ! Register CCPP

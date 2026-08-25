@@ -17,6 +17,7 @@ module atmos_coupling_mod
   public :: ufs_mpas_grid_to_physics
   public :: ufs_mpas_sfc_to_physics
   public :: ufs_mpas_landuse_update
+  public :: ufs_mpas_gwd_to_physics
   
 contains
   !> #########################################################################################
@@ -878,6 +879,64 @@ contains
   end subroutine ufs_mpas_sfc_to_physics
 
   !> #########################################################################################
+  !> Procedure to populate CCPP surface properties data container with MPAS pool data.
+  !> Initial condition fields needed by the CCPP GWD parameterization are. 
+  !> DJS: MERGE INTO UFS_MPAS_SFC_TO_PHYSICS.
+  !> #########################################################################################
+  subroutine ufs_mpas_gwd_to_physics(surface)
+    use GFS_typedefs,         only : GFS_sfcprop_type
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+    ! Arguments
+    type(GFS_sfcprop_type),      intent(inout) :: surface
+    ! Locals
+    type(mpas_pool_type), pointer :: mesh_pool, sfc_input
+    integer :: i, ierr, iCol, ithread
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    real(RKIND), pointer :: var2d(:), con(:), oa1(:), oa2(:), oa3(:), oa4(:)
+    real(RKIND), pointer :: ol1(:), ol2(:), ol3(:), ol4(:)
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_gwd_to_physics'
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    ! Access MPAS data pools
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
+
+    call mpas_pool_get_array(sfc_input, 'var2d', var2d)
+    call mpas_pool_get_array(sfc_input, 'con',   con)
+    call mpas_pool_get_array(sfc_input, 'oa1',   oa1)
+    call mpas_pool_get_array(sfc_input,	'oa2',   oa2)
+    call mpas_pool_get_array(sfc_input,	'oa3',   oa3)
+    call mpas_pool_get_array(sfc_input,	'oa4',   oa4)
+    call mpas_pool_get_array(sfc_input, 'ol1',   ol1)
+    call mpas_pool_get_array(sfc_input, 'ol2',   ol2)
+    call mpas_pool_get_array(sfc_input, 'ol3',   ol3)
+    call mpas_pool_get_array(sfc_input, 'ol4',   ol4)
+
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          surface % hprime(iCol,1)  = var2d(iCol)
+          surface % hprime(iCol,2)  = con(iCol)
+          surface % hprime(iCol,3)  = oa1(iCol)
+          surface % hprime(iCol,4)  = oa2(iCol)
+          surface % hprime(iCol,5)  = oa3(iCol)
+          surface % hprime(iCol,6)  = oa4(iCol)
+          surface % hprime(iCol,7)  = ol1(iCol)
+          surface % hprime(iCol,8)  = ol2(iCol)
+          surface % hprime(iCol,9)  = ol3(iCol)
+          surface % hprime(iCol,10) = ol4(iCol)
+          ! DJS: hprime 11-14, theta, sigma, gamma, and elvmax, are passed in to drag_suite_run,
+          !      but not used drag_suite_run. hprime(nCol,1:24) is initialized to zero.
+       end do
+    end do
+
+  end subroutine ufs_mpas_gwd_to_physics
+
+  !> #########################################################################################
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
   !> #########################################################################################
@@ -887,7 +946,8 @@ contains
     use GFS_typedefs,         only : GFS_diag_type
     use GFS_typedefs,         only : GFS_tbd_type
     use mpas_derived_types,   only : mpas_pool_type
-    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension
+    use mpas_pool_routines,   only : mpas_pool_get_array, mpas_pool_get_config
 
     ! Arguments
     type(GFS_control_type), intent(in) :: control
