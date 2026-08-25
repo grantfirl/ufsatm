@@ -270,6 +270,17 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: snodi  (:)   => null()  !< snow depth over ice
     real (kind=kind_phys), pointer :: weasdi (:)   => null()  !< weasd over ice
     real (kind=kind_phys), pointer :: hprime (:,:) => null()  !< orographic metrics
+    real (kind=kind_phys), pointer :: clx(:,:)     => null()  !< frac. of grid box with by subgrid HAMSL higher than critical height
+    real (kind=kind_phys), pointer :: oa4(:,:)     => null()  !< asymmetry of subgrid height_above_mean_sea_level
+    real (kind=kind_phys), pointer :: oc(:)        => null()  !< convexity of subgrid height_above_mean_sea_level
+    real (kind=kind_phys), pointer :: varss(:)     => null()  !< standard deviation of subgrid height_above_mean_sea_level
+    real (kind=kind_phys), pointer :: ocss(:)      => null()  !< convexity of subgrid height_above_mean_sea_level
+    real (kind=kind_phys), pointer :: oa4ss(:,:)   => null()  !< asymmetry of subgrid height_above_mean_sea_level
+    real (kind=kind_phys), pointer :: clxss(:,:)   => null()  !< frac. of grid box with by subgrid HAMSL higher than critical height
+    real (kind=kind_phys), pointer :: gamma(:)     => null()  !<
+    real (kind=kind_phys), pointer :: sigma(:)     => null()  !<
+    real (kind=kind_phys), pointer :: theta(:)     => null()  !<
+    real (kind=kind_phys), pointer :: elvmax(:)    => null()  !< 
     real (kind=kind_phys), pointer :: dust12m_in  (:,:,:) => null()  !< fengsha dust input
     real (kind=kind_phys), pointer :: emi_in (:,:) => null()  !< anthropogenic background input
     real (kind=kind_phys), pointer :: smoke_RRFS(:,:,:) => null()  !< RRFS fire input hourly
@@ -2522,7 +2533,22 @@ module GFS_typedefs
     allocate (Sfcprop%weasdl   (IM))
     allocate (Sfcprop%snodi    (IM))
     allocate (Sfcprop%weasdi   (IM))
+    ! GWD
     allocate (Sfcprop%hprime   (IM,Model%nmtvr))
+    allocate (Sfcprop%oc       (IM))
+    allocate (Sfcprop%oa4      (IM,4))
+    allocate (Sfcprop%clx      (IM,4))
+    allocate (Sfcprop%gamma    (IM))
+    allocate (Sfcprop%sigma    (IM))
+    allocate (Sfcprop%theta    (IM))
+    allocate (Sfcprop%elvmax   (IM))
+    if (Model%gwd_opt==3 .or. Model%gwd_opt==33 .or. &
+        Model%gwd_opt==2 .or. Model%gwd_opt==22 ) then
+       allocate (Sfcprop%varss  (IM))
+       allocate (Sfcprop%ocss   (IM))
+       allocate (Sfcprop%oa4ss  (IM,4))
+       allocate (Sfcprop%clxss  (IM,4))
+    end if
     allocate (Sfcprop%dust12m_in  (IM,12,5))
     allocate (Sfcprop%smoke_RRFS(IM,24,2))
     allocate (Sfcprop%smoke2d_RRFS(IM,5))
@@ -2579,7 +2605,22 @@ module GFS_typedefs
     Sfcprop%weasdl    = clear_val
     Sfcprop%snodi     = clear_val
     Sfcprop%weasdi    = clear_val
+    ! GWD
     Sfcprop%hprime    = clear_val
+    Sfcprop%oc        = clear_val
+    Sfcprop%oa4       = clear_val
+    Sfcprop%clx       = clear_val
+    Sfcprop%gamma     = clear_val
+    Sfcprop%sigma     = clear_val
+    Sfcprop%theta     = clear_val
+    Sfcprop%elvmax    = clear_val
+    if (Model%gwd_opt==3 .or. Model%gwd_opt==33 .or. &
+        Model%gwd_opt==2 .or. Model%gwd_opt==22 ) then
+       Sfcprop%varss = clear_val
+       Sfcprop%ocss  = clear_val
+       Sfcprop%oa4ss = clear_val
+       Sfcprop%clxss = clear_val
+    end if
     Sfcprop%dust12m_in= clear_val
     Sfcprop%emi_in    = clear_val
     Sfcprop%smoke_RRFS= clear_val
