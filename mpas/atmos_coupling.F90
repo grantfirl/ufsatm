@@ -874,14 +874,14 @@ contains
     type(GFS_control_type),      intent(in) :: physics_control
     type(GFS_sfcprop_type),      intent(inout) :: physics_sfcprop
     ! Locals
-    type(mpas_pool_type), pointer :: sfc_input, mesh
+    type(mpas_pool_type), pointer :: sfc_input, mesh, diag_phys
     integer :: i, ierr, iCol, ithread
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer, pointer :: isltyp(:), ivgtyp(:), landmask(:)!, isice_lu, iswater_lu 
     integer :: isice_lu, iswater_lu
     real(RKIND), pointer :: dzs(:,:), sh2o(:,:), smois(:,:), tslb(:,:) 
     real(RKIND), pointer :: albbck(:), skintemp(:), snow(:), snowc(:), snowh(:)
-    real(RKIND), pointer :: sst(:), tmn(:), vegfra(:), seaice(:), xice(:), xland(:)
+    real(RKIND), pointer :: sst(:), tmn(:), vegfra(:), seaice(:), xice(:), xland(:), znt(:), sfc_albedo(:), canwat(:)
     real(RKIND), pointer :: greenfrac(:,:), albedo12m(:,:)
     real(RKIND), pointer :: ter(:), shdmin(:), shdmax(:), snoalb(:)
     character(len=StrKIND), pointer :: mminlu
@@ -895,6 +895,7 @@ contains
     ! Access MPAS data pools.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh', mesh)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics', diag_phys)
     !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
     
     !just grab the data from sfc_input as it exists; will figure out where/how to organize into GFS_typedefs later
@@ -926,6 +927,13 @@ contains
     call mpas_pool_get_array(sfc_input, 'snoalb',    snoalb) !dim (nCells); annual maximum snow albedo
     call mpas_pool_get_array(sfc_input, 'greenfrac', greenfrac) !dim (nMonths nCells); monthly-mean climatological greenness fraction (percent)
     call mpas_pool_get_array(sfc_input, 'albedo12m', albedo12m) !dim (nMonhts nCells); monthly-mean climatological surface albedo (percent)
+    
+    call mpas_pool_get_array(sfc_input, 'canwat',    canwat) !dim (nCells); water in canopy (kg m^-2)
+    
+    call mpas_pool_get_array(diag_phys, 'znt',       znt) !dim (nCells); roughness length (m)
+    call mpas_pool_get_array(diag_phys, 'sfc_albedo',sfc_albedo ) !dim (nCells); surface albedo (fraction)
+    
+    
     write(*,*) 'shape/min/max dzs',SHAPE(dzs),minval(dzs),maxval(dzs)
     write(*,*) 'shape/min/max isltyp',SHAPE(isltyp),minval(isltyp),maxval(isltyp)
     write(*,*) 'shape/min/max ivgtyp',SHAPE(ivgtyp),minval(ivgtyp),maxval(ivgtyp)
@@ -967,66 +975,59 @@ contains
         physics_sfcprop % tsfco(iCol) = sst(iCol)
         physics_sfcprop % weasd(iCol) = snow(iCol)  !weasd is in mm, snow is in kg m-2; after dividing by density of water and converting to mm, these are equivalent
         physics_sfcprop % tg3(iCol)   = tmn(iCol)
-        !zorl - z0/znt in MPAS, read in as sfz0; landuse_init_forMPAS not used yet; diag_physics pool, z0 - not initialized yet
-        !zorl (roughness length) - extra data/calcs needed
+        physics_sfcprop % zorl(iCol)  = znt(iCol)*100.0_RKIND
         !alvsf, alvwf, alnsf, alnwf - MPAS doesn't split into visible/nir and strong/weak coszen dependency; set these to the value that we have (background snow-free albedo of surface)?
-        !physics_sfcprop % alvsf(iCol) = albbck(iCol)
-        !physics_sfcprop % alvwf(iCol) = albbck(iCol)
-        !physics_sfcprop % alnsf(iCol) = albbck(iCol)
-        !physics_sfcprop % alnwf(iCol) = albbck(iCol)
-        !physics_sfcprop % facsf(iCol) = ? - from gcycle?
-        !physics_sfcprop % facwf(iCol) = ? - from gcycle?
+        physics_sfcprop % alvsf(iCol) = sfc_albedo(iCol)
+        physics_sfcprop % alvwf(iCol) = sfc_albedo(iCol)
+        physics_sfcprop % alnsf(iCol) = sfc_albedo(iCol)
+        physics_sfcprop % alnwf(iCol) = sfc_albedo(iCol)
+        physics_sfcprop % facsf(iCol) = 0.5!? - from gcycle?
+        physics_sfcprop % facwf(iCol) = 0.5!? - from gcycle?
         physics_sfcprop % vfrac(iCol) = vegfra(iCol)*0.01_RKIND !conversion to decimal from percent
-        !physics_sfcprop % canopy(iCol) = ?
+        physics_sfcprop % canopy(iCol)= canwat(iCol) !not in sfc_input stream?
+        !physics_sfcprop % f10m(iCol)  = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
+        !physics_sfcprop % t2m(iCol)   = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
+        !physics_sfcprop % q2m(iCol)   = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
+        physics_sfcprop % vtype(iCol) = ivgtyp(iCol)
+        physics_sfcprop % stype(iCol) = isltyp(iCol)
+        !physics_sfcprop % uustar(iCol) = 0.0_RKIND !no input in ICs; intent(inout) in surface layer scheme; found in diag_phys pool
+        !physics_sfcprop % ffmm(iCol) = 0.0_RKIND !no input in ICs; intent(inout) in surface layer scheme
+        !physics_sfcprop % ffhh(iCol) = 0.0_RKIND !no input in ICs; intent(inout) in surface layer scheme
+        !physics_sfcprop % hice(iCol)  = 0.0_RKIND !no input in ICs; probably from a climatological sea ice dataset?
+        physics_sfcprop % fice(iCol)   = xice(iCol) !potentially need to divide by a sea area fraction if necessary?
+        !physics_sfcprop % tisfc(iCol)  = 
+        !physics_sfcprop % tprcp(iCol) = 
+        !physics_sfcprop % srflag(iCol) = 
+        !physics_sfcprop % snowd(iCol) = 
+        physics_sfcprop % shdmin(iCol) = shdmin(iCol)
+        physics_sfcprop % shdmax(iCol) = shdmax(iCol)
+        !physics_sfcprop % slope(iCol) = ? supposed to be read in from GENPARM.TBL? need to call RUCLSM_SOILVEGPARM at some point?
+        physics_sfcprop % snoalb(iCol) = snoalb(iCol)
+        if (nint (physics_sfcprop % slmsk(iCol)) == 1) then !from fv3atm_sfc_io.F90/sfc_io_apply_safeguards()
+          physics_sfcprop % scolor(iCol) = 4
+        else
+          physics_sfcprop % scolor(iCol) = 0
+        endif
+        physics_sfcprop % sncovr(iCol) = snowc(iCol)
+        !physics_sfcprop % snodl(iCol) = 
+        !physics_sfcprop % weasdl(iCol) = 
+        physics_sfcprop % tsfc(iCol) = skintemp(iCol)
+        !physics_sfcprop % tsfcl(iCol) = 
+        !physics_sfcprop % zorlw(iCol) = 
+        !physics_sfcprop % zorll(iCol) =
+        !physics_sfcprop % zorli(iCol) =
+        !physics_sfcprop % albdirvis_lnd(iCol) = 
+        !physics_sfcprop % albdirnir_lnd(iCol) = 
+        !physics_sfcprop % albdifvis_lnd(iCol) = 
+        !physics_sfcprop % albdifnir_lnd(iCol) = 
+        !physics_sfcprop % emis_lnd(iCol) = 
+        !physics_sfcprop % emis_ice(iCol) = 
+        !physics_sfcprop % sncovr_ice(iCol) = 
+        !physics_sfcprop % snodi(iCol) = 
+        !physics_sfcprop % weasdi(iCol) =   
       end do
     end do
     
-    !from fv3atm_sfc_io/sfc_io_apply_safeguards()
-    if(physics_control%frac_grid) then ! 3-way composite
-      ! do ithread = 1,nThreads
-      !   do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-      ! 
-      !   end do
-      ! end do
-    else
-      do ithread = 1,nThreads
-        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          
-        end do
-      end do
-    end if  
-          !from fv3atm_sfc_io/sfc_io_apply_safeguards()
-          if(physics_control%frac_grid) then ! 3-way composite
-            !$omp parallel do default(shared) private(nb, ix, im, tem, tem1)
-            do nb = 1, Atm_block%nblks
-              do ix = 1, Atm_block%blksz(nb)
-                im = Model%chunk_begin(nb)+ix-1
-                Sfcprop%tsfco(im) = max(con_tice, Sfcprop%tsfco(im)) ! this may break restart reproducibility
-                tem1 = one - Sfcprop%landfrac(im)
-                tem  = tem1 * Sfcprop%fice(im) ! tem = ice fraction wrt whole cell
-                Sfcprop%tsfc(im) = Sfcprop%tsfcl(im) * Sfcprop%landfrac(im) &
-                     + Sfcprop%tisfc(im) * tem                      &
-                     + Sfcprop%tsfco(im) * (tem1-tem)
-              enddo
-            enddo
-          else
-            !$omp parallel do default(shared) private(nb, ix, im, tem)
-            do nb = 1, Atm_block%nblks
-              do ix = 1, Atm_block%blksz(nb)
-                im = Model%chunk_begin(nb)+ix-1
-                if (Sfcprop%slmsk(im) == 1) then
-                  Sfcprop%tsfc(im) = Sfcprop%tsfcl(im)
-                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc land ',nb,ix,Sfcprop%tsfcl(im)
-                elseif(Sfcprop%fice(im) > 0.0)then
-                  Sfcprop%tsfc(im) = Sfcprop%tisfc(im)
-                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc ice  ',nb,ix,Sfcprop%tisfc(im)
-                else
-                  Sfcprop%tsfc(im) = Sfcprop%tsfco(im)
-                  if (Sfcprop%tsfc(im) < -99 .or. Sfcprop%tsfc(im) > 999.) print*,'bad tsfc water ',nb,ix,Sfcprop%tsfco(im)
-                endif
-              enddo
-            enddo
-          endif
     STOP
 
   end subroutine ufs_mpas_sfc_to_physics
