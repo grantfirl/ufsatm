@@ -880,21 +880,25 @@ contains
 
   !> #########################################################################################
   !> Procedure to populate CCPP surface properties data container with MPAS pool data.
-  !> Initial condition fields needed by the CCPP GWD parameterization are. 
-  !> DJS: MERGE INTO UFS_MPAS_SFC_TO_PHYSICS.
+  !> Initial condition fields needed by the CCPP GWD parameterization.
+  !> 
   !> #########################################################################################
-  subroutine ufs_mpas_gwd_to_physics(surface)
+  subroutine ufs_mpas_gwd_to_physics(control,surface)
+    use GFS_typedefs,         only : GFS_control_type
     use GFS_typedefs,         only : GFS_sfcprop_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
     ! Arguments
-    type(GFS_sfcprop_type),      intent(inout) :: surface
+    type(GFS_control_type), intent(in   ) :: control
+    type(GFS_sfcprop_type), intent(inout) :: surface
     ! Locals
     type(mpas_pool_type), pointer :: mesh_pool, sfc_input
     integer :: i, ierr, iCol, ithread
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     real(RKIND), pointer :: var2d(:), con(:), oa1(:), oa2(:), oa3(:), oa4(:)
     real(RKIND), pointer :: ol1(:), ol2(:), ol3(:), ol4(:)
+    real(RKIND), pointer :: var2dss(:), conss(:), oa1ss(:), oa2ss(:), oa3ss(:), oa4ss(:)
+    real(RKIND), pointer :: ol1ss(:), ol2ss(:), ol3ss(:), ol4ss(:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_gwd_to_physics'
 
     ! Get openMP information
@@ -916,21 +920,53 @@ contains
     call mpas_pool_get_array(sfc_input, 'ol2',   ol2)
     call mpas_pool_get_array(sfc_input, 'ol3',   ol3)
     call mpas_pool_get_array(sfc_input, 'ol4',   ol4)
+    !
+    if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
+        control%gwd_opt==2 .or. control%gwd_opt==22 ) then
+       call mpas_pool_get_array(sfc_input, 'var2dss', var2dss)
+       call mpas_pool_get_array(sfc_input, 'conss',   conss)
+       call mpas_pool_get_array(sfc_input, 'oa1ss',   oa1ss)
+       call mpas_pool_get_array(sfc_input, 'oa2ss',   oa2ss)
+       call mpas_pool_get_array(sfc_input, 'oa3ss',   oa3ss)
+       call mpas_pool_get_array(sfc_input, 'oa4ss',   oa4ss)
+       call mpas_pool_get_array(sfc_input, 'ol1ss',   ol1ss)
+       call mpas_pool_get_array(sfc_input, 'ol2ss',   ol2ss)
+       call mpas_pool_get_array(sfc_input, 'ol3ss',   ol3ss)
+       call mpas_pool_get_array(sfc_input, 'ol4ss',   ol4ss)
+    end if
 
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          surface % hprime(iCol,1)  = var2d(iCol)
-          surface % hprime(iCol,2)  = con(iCol)
-          surface % hprime(iCol,3)  = oa1(iCol)
-          surface % hprime(iCol,4)  = oa2(iCol)
-          surface % hprime(iCol,5)  = oa3(iCol)
-          surface % hprime(iCol,6)  = oa4(iCol)
-          surface % hprime(iCol,7)  = ol1(iCol)
-          surface % hprime(iCol,8)  = ol2(iCol)
-          surface % hprime(iCol,9)  = ol3(iCol)
-          surface % hprime(iCol,10) = ol4(iCol)
-          ! DJS: hprime 11-14, theta, sigma, gamma, and elvmax, are passed in to drag_suite_run,
-          !      but not used drag_suite_run. hprime(nCol,1:24) is initialized to zero.
+          surface % hprime(iCol,1) = var2d(iCol)
+          surface % oc(iCol)       = con(iCol)
+          surface % oa4(iCol,1)    = oa1(iCol)
+          surface % oa4(iCol,2)    = oa2(iCol)
+          surface % oa4(iCol,3)    = oa3(iCol)
+          surface % oa4(iCol,4)    = oa4(iCol)
+          surface % clx(iCol,1)    = ol1(iCol)
+          surface % clx(iCol,2)    = ol2(iCol)
+          surface % clx(iCol,3)    = ol3(iCol)
+          surface % clx(iCol,4)    = ol4(iCol)
+          ! DJS: Where are these set? Do we need them?
+          !      drag_suite_run doesn't use these...
+          !      GFS_GWD_generic_pre sets them to zero, since mntvar(11:14) is initialized to zero.
+          !surface % gamma(iCol) = 
+          !surface % sigma(iCol) = 
+          !surface % theta(iCol) = 
+          !surface % elvmax(iCol = 
+          if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
+              control%gwd_opt==2 .or. control%gwd_opt==22 ) then
+             surface % varss(iCol)   = var2dss(iCol)
+             surface % ocss(iCol)    = conss(iCol)
+             surface % oa4ss(iCol,1) = oa1ss(iCol)
+             surface % oa4ss(iCol,2) = oa2ss(iCol)
+             surface % oa4ss(iCol,3) = oa3ss(iCol)
+             surface % oa4ss(iCol,4) = oa4ss(iCol)
+             surface % clxss(iCol,1) = ol1ss(iCol)
+             surface % clxss(iCol,2) = ol2ss(iCol)
+             surface % clxss(iCol,3) = ol3ss(iCol)
+             surface % clxss(iCol,4) = ol4ss(iCol)
+          end if
        end do
     end do
 

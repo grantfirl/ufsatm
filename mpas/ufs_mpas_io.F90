@@ -21,6 +21,7 @@ module ufs_mpas_io
   use module_mpas_config,  only : pio_iotype, pio_stride, pio_numiotasks, pio_iodesc
   use module_mpas_config,  only : lbc_filename,        pioid_lbc,      pio_subsystem_lbc
   use module_mpas_config,  only : ic_filename,         pioid_ic,       pio_subsystem_ic
+  use module_mpas_config,  only : oro_filename,        pioid_oro,      pio_subsystem_oro
   use module_mpas_config,  only :                      pioid_restart,  pio_subsystem_restart
   use module_mpas_config,  only :                      pioid_output,   pio_subsystem_output
   use module_mpas_config,  only : stream_list_history, stream_list_history_funit
@@ -383,6 +384,26 @@ contains
     end if
 
   end subroutine ufs_mpas_open_lbc
+
+  !> #########################################################################################
+  !> Procedure to open MPAS GWD data file.
+  !>
+  !> #########################################################################################
+  subroutine ufs_mpas_open_oro(ierr)
+    use pio, only : pio_openfile, pio_nowrite
+    integer, intent(out) :: ierr
+    logical :: file_exists
+
+    ! Open MPAS orography GWD file.
+    ierr = 0
+    INQUIRE(FILE=oro_filename, EXIST=file_exists)
+    if (file_exists) then
+       ierr = pio_openfile(pio_subsystem_oro, pioid_oro, pio_iotype, oro_filename, pio_nowrite)
+    else
+       ierr = -1
+    end if
+
+  end subroutine ufs_mpas_open_oro
 
   !> #########################################################################################
   !> 
@@ -1879,6 +1900,13 @@ contains
 
       if (any(var_name_list == trim(adjustl(stream_name_fragment)))) then
          var_info_list_buffer = pack(lbc_in_var_info_list, var_name_list == trim(adjustl(stream_name_fragment)))
+         var_info_list = [var_info_list, var_info_list_buffer]
+      end if
+
+      var_name_list = ugwp_oro_data_var_info_list % name
+
+      if (any(var_name_list == trim(adjustl(stream_name_fragment)))) then
+         var_info_list_buffer = pack(ugwp_oro_data_var_info_list, var_name_list == trim(adjustl(stream_name_fragment)))
          var_info_list = [var_info_list, var_info_list_buffer]
       end if
 

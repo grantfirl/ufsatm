@@ -28,7 +28,7 @@ module atmos_model_mod
   use mpas_log,              only : mpas_log_write
   use mpas_derived_types,    only : MPAS_LOG_CRIT
   ! UFSATM
-  use module_mpas_config,    only : nCellsGlobal, ic_filename, lbc_filename, nCellsSolve
+  use module_mpas_config,    only : ic_filename, lbc_filename, oro_filename, nCellsSolve
   use module_mpas_config,    only : stream_list_history, stream_list_restart, stream_list_diag
   use module_mpas_config,    only : lonCell, latCell, areaCellGlobal
   use module_mpas_config,    only : mpas_errfile_funit, mpas_errfilename
@@ -81,7 +81,7 @@ module atmos_model_mod
   logical :: phys_diag        = .false.
 
   namelist /atmos_model_nml/ blocksize, dycore_only, phys_diag, debug, ccpp_suite, ic_filename,&
-       lbc_filename, regional, stream_list_history, stream_list_restart, stream_list_diag
+       lbc_filename, oro_filename, regional, stream_list_history, stream_list_restart, stream_list_diag
 
   ! Component Timers
   real(MPAS_kind_phys) :: setupClock, atmiClock, radClock, physClock,mpasClock, mpClock, outClock
@@ -103,8 +103,8 @@ contains
   subroutine atmos_model_init(Atmos, mpicomm, calendar, CurrTime, StartTime, StopTime)
     use ufs_mpas_subdriver,     only : MPAS_control_type
     use ufs_mpas_subdriver,     only : ufs_mpas_init
-    use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc, ufs_mpas_read_stream_lists
-    use ufs_mpas_io,            only : ufs_mpas_landuse_read
+    use ufs_mpas_io,            only : ufs_mpas_open_init, ufs_mpas_open_lbc, ufs_mpas_open_oro
+    use ufs_mpas_io,            only : ufs_mpas_read_stream_lists, ufs_mpas_landuse_read
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
     use atmos_coupling_mod,     only : ufs_mpas_landuse_update, ufs_mpas_gwd_to_physics
     use MPAS_init,              only : MPAS_initialize
@@ -179,6 +179,7 @@ contains
     call mpi_bcast(blocksize,           1,                        MPI_INTEGER,   Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(ic_filename,         len(ic_filename),         MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(lbc_filename,        len(lbc_filename),        MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
+    call mpi_bcast(oro_filename,        len(oro_filename),        MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(stream_list_history, len(stream_list_history), MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(stream_list_restart, len(stream_list_restart), MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
     call mpi_bcast(stream_list_diag,    len(stream_list_diag),    MPI_CHARACTER, Cfg%master, Cfg%mpi_comm, ierr)
@@ -210,6 +211,15 @@ contains
           stop
        endif
     endif
+
+    ! Open (PIO) MPAS orography file for GWD parameterization(s).
+    if (trim(oro_filename) .ne. "none") then
+       call ufs_mpas_open_oro(ierr)
+       if (ierr/=0) then
+          print*,'ERROR: Could not open MPAS Orography file'
+          stop
+       end if
+    end if
 
     ! Call MPAS initialization.
     ! - Set up MPAS framework
@@ -276,7 +286,7 @@ contains
     !
     call ufs_mpas_grid_to_physics(UFSATM_grid)
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop)
-    call ufs_mpas_gwd_to_physics(UFSATM_sfcprop)
+    call ufs_mpas_gwd_to_physics(UFSATM_control, UFSATM_sfcprop)
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
     ! Register CCPP
