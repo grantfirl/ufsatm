@@ -19,7 +19,7 @@ module ufs_mpas_subdriver
   use mpas_kind_types,    only : StrKIND, rkind
   use mpas_derived_types, only : MPAS_LOG_ERR, MPAS_LOG_CRIT
   use mpas_log,           only : mpas_log_write
-  use module_mpas_config, only : pioid_ic, pioid_restart
+  use module_mpas_config, only : pioid_ic, pioid_restart, oro_filename
   use module_mpas_config, only : fcst_mpi_comm
   use module_mpas_config, only : zref, zref_edge, sphere_radius, pref, pref_edge
   use module_mpas_config, only : maxNCells, maxEdges, nVertLevels
@@ -432,7 +432,7 @@ contains
     !
     ! Read in initial-conditions
     !
-    call mpas_log_write('Reading in MPAS initial condition stream.')
+    call mpas_log_write('Reading in MPAS initial condition file.')
     call dyn_mpas_read_write_stream(clock, 'r', 'input', pio_file_desc=pioid_ic, ierr=ierr, &
                                     timeLevel=1, whence=mpas_NOW, nRecord=1, debug=debug)
     if (ierr /= MPAS_STREAM_MGR_NOERR) then
@@ -442,6 +442,18 @@ contains
                                     timeLevel=1, whence=mpas_NOW, nRecord=1, debug=debug)
     if (ierr /= MPAS_STREAM_MGR_NOERR) then
        call mpas_log_write(subname // " Could not read from ''sfc_input'' stream ",messageType=MPAS_LOG_CRIT)
+    end if
+
+    !
+    ! Read in orography data for GWD.
+    ! (only if file has been provided. If bogus filename provided, there would be an error earlier when trying to open the file)
+    if (trim(oro_filename) .ne. 'none') then
+       call mpas_log_write('Reading in MPAS orography data file for GWD parameterization.')
+       call dyn_mpas_read_write_stream(clock, 'r', 'ugwp_oro_data', pio_file_desc=pioid_oro, ierr=ierr, &
+                                      timeLevel=1, whence=mpas_NOW, nRecord=1, debug=debug)
+       if (ierr /= MPAS_STREAM_MGR_NOERR) then
+          call mpas_log_write(subname // " Could not read from ''ugwp_oro_data'' stream ",messageType=MPAS_LOG_CRIT)
+       end if
     end if
 
     !

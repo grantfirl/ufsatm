@@ -17,6 +17,7 @@ module atmos_coupling_mod
   public :: ufs_mpas_grid_to_physics
   public :: ufs_mpas_sfc_to_physics
   public :: ufs_mpas_landuse_update
+  public :: ufs_mpas_gwd_to_physics
   
 contains
   !> #########################################################################################
@@ -51,7 +52,7 @@ contains
     real(kind=RKIND), pointer :: qv(:,:), qc(:,:), qr(:,:), qi(:,:), qs(:,:), qg(:,:)
     real(kind=RKIND), pointer :: ux(:,:), uy(:,:), theta_m(:,:), rho_zz(:,:), zgrid(:,:), zz(:,:)
     real(kind=RKIND), pointer :: exner(:,:), tracers(:,:,:), pressure_b(:,:), pressure_p(:,:)
-    real(kind=RKIND), pointer :: w(:,:), surface_pressure(:),  prsi(:,:), prsl(:,:), rho(:,:), dz(:,:)
+    real(kind=RKIND), pointer :: w(:,:), surface_pressure(:),  prsi(:,:), prsl(:,:), rho(:,:)
     real(RKIND), pointer :: sfc_albedo(:),sfc_emiss(:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_to_physics'
 
@@ -92,7 +93,6 @@ contains
     allocate(prsl(nCellsSolve, nVertLevels))
     allocate(prsi(nCellsSolve, nVertLevels + 1))
     allocate(rho( nCellsSolve, nVertLevels))
-    allocate(dz(  nCellsSolve, nVertLevels))
     
     ! Copy fields from MPAS data containers to physics data containers.
     ! [k, i] -> [i, k]
@@ -118,25 +118,32 @@ contains
              physics_state % ugrs(iCol,iLay)   = ux(iLay,iCol)
              physics_state % vgrs(iCol,iLay)   = uy(iLay,iCol)
 
-             ! Layer-height
-             physics_state % phil(iCol,iLay)   = 0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol))
+             ! Layer geopotential and height.
+             physics_state % phil(iCol,iLay)   = 0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol))*gravity !(m -> m2/s2)
+             physics_state % zgrid(iCol,iLay)  = 0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol))
 
-             ! Level height
-             physics_state % phii(iCol,iLay)   = zgrid(iLay,iCol)
+             ! Level geopotential and height.
+             physics_state % phii(iCol,iLay)   = zgrid(iLay,iCol)*gravity !(m -> m2/s2)
+             physics_state % zigrid(iCol,iLay) = zgrid(iLay,iCol)
 
-             ! Layer thickness (TODO: Pass to CCPP physics)
-             dz(iCol,iLay) = zgrid(iLay+1,iCol) - zgrid(iLay,iCol)
+             ! Layer thickness.
+             physics_state % dzgrid(iCol,iLay) = zgrid(iLay+1,iCol) - zgrid(iLay,iCol)
 
              ! Exner funciton
              physics_state % prslk(iCol,iLay)  = exner(iLay,iCol)
 
-             ! MPAS provides vertical velocity at interfaces, compute layer mean.
-             physics_state % vvl(iCol,iLay) = 0.5*(w(iLay,iCol) + w(iLay+1,iCol))
+             ! MPAS provides vertical velocity at interfaces, compute layer mean, and convert from w -> omega
+             physics_state % vvl(iCol,iLay) =  -0.5*(w(iLay,iCol) + w(iLay+1,iCol))*rho(iCol,iLay)*gravity
 
              ! Pressure (non-hydrostatic)
              prsl(iCol,iLay) = pressure_p(iLay,iCol) + pressure_b(iLay,iCol)
-
           end do
+          do iLay = nVertLevels,nVertLevels+1
+             physics_state % phii(iCol,iLay)     = zgrid(iLay,iCol)*gravity !(m -> m2/s2)
+             physics_state % zigrid(iCol,iLay)   = zgrid(iLay,iCol)
+             physics_state % dzgrid(iCol,iLay-1) = zgrid(iLay,iCol) - zgrid(iLay-1,iCol)
+          end do
+
           ! Set surface temperature to lowest level temperature (revisit for coupling)
           theta = theta_m(1,iCol) / (1._RKIND + rvord * tracers(index_qv,1,iCol))
           surface_state % tsfc(iCol) = theta*exner(1,iCol)
@@ -219,7 +226,7 @@ contains
           do iLay = nVertLevels,1,-1
              rho_a = rho(iCol,iLay) / (1.+tracers(index_qv,iLay,iCol))
              physics_state % prsi(iCol,iLay)  = physics_state % prsi(iCol,iLay+1) + &
-                  gravity*rho(iCol,iLay)*dz(iCol,iLay)
+                  gravity*rho(iCol,iLay)*physics_state % dzgrid(iCol,iLay)
           end do
           ! Pressure at layer-centers
           do iLay = nVertLevels,1,-1
@@ -233,7 +240,6 @@ contains
     ! Housekeeping
     deallocate (prsl)
     deallocate (prsi)
-    deallocate (dz)
     deallocate (rho)
     nullify (mesh_pool)
     nullify (state_pool)
@@ -516,18 +522,6 @@ contains
     integer :: iCol, ithread, iLay, iTracer
     integer, pointer :: nCellsSolve
     integer, pointer :: index_qv => null()
-    integer, pointer :: index_qc => null()
-    integer, pointer :: index_qi => null()
-    integer, pointer :: index_qr => null()
-    integer, pointer :: index_qs => null()
-    integer, pointer :: index_qg => null()
-    integer, pointer :: index_nc => null()
-    integer, pointer :: index_ni => null()
-    integer, pointer :: index_nr => null()
-    integer, pointer :: index_ns => null()
-    integer, pointer :: index_ng => null()
-    integer, pointer :: index_nifa => null()
-    integer, pointer :: index_nwfa => null()
     integer, pointer :: num_scalars, nVertLevels
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     real(kind=RKIND) :: rho1, rho2, tem1, tem2, coeff, rcv, theta_dyn
@@ -554,18 +548,6 @@ contains
     ! MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
-    call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
-    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
-    call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
-    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
-    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
-    call mpas_pool_get_dimension(state_pool, 'index_nc',    index_nc)
-    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
-    call mpas_pool_get_dimension(state_pool, 'index_nr',    index_nr)
-    call mpas_pool_get_dimension(state_pool, 'index_ns',    index_ns)
-    call mpas_pool_get_dimension(state_pool, 'index_ng',    index_ng)
-    call mpas_pool_get_dimension(state_pool, 'index_nifa',  index_nifa)
-    call mpas_pool_get_dimension(state_pool, 'index_nwfa',  index_nwfa)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
 
@@ -680,7 +662,7 @@ contains
     use GFS_typedefs,         only : GFS_stateout_type, GFS_statein_type
     use mpas_derived_types,   only : mpas_pool_type
     use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_dimension
-    use mpas_constants,       only : rvord
+    use mpas_constants,       only : rvord, gravity
 
     ! Arguments
     type(GFS_stateout_type), intent(inout) :: physics_state
@@ -689,11 +671,11 @@ contains
     ! Locals
     type(mpas_pool_type), pointer :: state_pool, diag_pool, mesh_pool
     integer :: ithread, iCol, iTracer, iLay
-    integer, pointer :: num_scalars, nVertLevels, nCellsSolve, index_qv, index_qc, index_qr, index_qi, index_qs, index_qg, index_ni, index_nr
+    integer, pointer :: num_scalars, nVertLevels, nCellsSolve, index_qv
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     real(kind=RKIND), pointer :: rho_zz(:,:), theta_m(:,:), zz(:,:), zgrid(:,:), exner(:,:)
     real(kind=RKIND), pointer :: tracers(:,:,:), rho(:,:), pressure_b(:,:), pressure_p(:,:), w(:,:)
-    real(kind=RKIND) :: theta, pres, z, dz
+    real(kind=RKIND) :: theta, pres
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_to_microphysics'
 
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
@@ -708,14 +690,6 @@ contains
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
-    call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
-    call mpas_pool_get_dimension(state_pool, 'index_qr',    index_qr)
-    call mpas_pool_get_dimension(state_pool, 'index_qi',    index_qi)
-    call mpas_pool_get_dimension(state_pool, 'index_qs',    index_qs)
-    call mpas_pool_get_dimension(state_pool, 'index_qg',    index_qg)
-    call mpas_pool_get_dimension(state_pool, 'index_ni',    index_ni)
-    call mpas_pool_get_dimension(state_pool, 'index_nr',    index_nr)
-    
 
     call mpas_pool_get_array(state_pool, 'rho_zz',       rho_zz,  timeLevel=1)
     call mpas_pool_get_array(state_pool, 'theta_m',      theta_m, timeLevel=1)
@@ -746,24 +720,18 @@ contains
              ! Air temperature (theta -> t)
              physics_state % gt0(iCol,iLay) = theta*exner(iLay,iCol)
 
-             ! Pressure
-             pres = pressure_b(iLay,iCol) + pressure_p(iLay,iCol)
-
-             ! Height and layer-thickness (TODO: Pass to CCPP Physics)
-             z  = zgrid(iLay,iCol)
-             dz = zgrid(iLay+1,iCol) - zgrid(iLay,iCol)
-
-             ! Vertical velocity
-             physics_statein % vvl(iCol,iLay) = 0.5*(w(iLay,iCol) + w(iLay+1,iCol))
+             ! Vertical velocity (w -> omega)
+             physics_statein % vvl(iCol,iLay) = -0.5*(w(iLay,iCol) + w(iLay+1,iCol))*rho(iCol,iLay)*gravity
           end do
        end do
     end do
-
     deallocate(rho)
     nullify(diag_pool)
     nullify(mesh_pool)
     nullify(state_pool)
 
+    ! DJS:  Update hydrostatic pressure after dynamics, before MP?
+    
     ! GJF: Remove microphysics heating from state before calling microphysics. This is done
     ! at line 3317 of mpas_atm_time_integration.F/atm_recover_large_step_variables_work.
  
@@ -911,6 +879,100 @@ contains
   end subroutine ufs_mpas_sfc_to_physics
 
   !> #########################################################################################
+  !> Procedure to populate CCPP surface properties data container with MPAS pool data.
+  !> Initial condition fields needed by the CCPP GWD parameterization.
+  !> 
+  !> #########################################################################################
+  subroutine ufs_mpas_gwd_to_physics(control,surface)
+    use GFS_typedefs,         only : GFS_control_type
+    use GFS_typedefs,         only : GFS_sfcprop_type
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+    ! Arguments
+    type(GFS_control_type), intent(in   ) :: control
+    type(GFS_sfcprop_type), intent(inout) :: surface
+    ! Locals
+    type(mpas_pool_type), pointer :: mesh_pool, sfc_input
+    integer :: i, ierr, iCol, ithread
+    integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
+    real(RKIND), pointer :: var2d(:), con(:), oa1(:), oa2(:), oa3(:), oa4(:)
+    real(RKIND), pointer :: ol1(:), ol2(:), ol3(:), ol4(:)
+    real(RKIND), pointer :: var2dss(:), conss(:), oa1ss(:), oa2ss(:), oa3ss(:), oa4ss(:)
+    real(RKIND), pointer :: ol1ss(:), ol2ss(:), ol3ss(:), ol4ss(:)
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_gwd_to_physics'
+
+    ! Get openMP information
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+
+    ! Access MPAS data pools
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
+
+    call mpas_pool_get_array(sfc_input, 'var2d', var2d)
+    call mpas_pool_get_array(sfc_input, 'con',   con)
+    call mpas_pool_get_array(sfc_input, 'oa1',   oa1)
+    call mpas_pool_get_array(sfc_input,	'oa2',   oa2)
+    call mpas_pool_get_array(sfc_input,	'oa3',   oa3)
+    call mpas_pool_get_array(sfc_input,	'oa4',   oa4)
+    call mpas_pool_get_array(sfc_input, 'ol1',   ol1)
+    call mpas_pool_get_array(sfc_input, 'ol2',   ol2)
+    call mpas_pool_get_array(sfc_input, 'ol3',   ol3)
+    call mpas_pool_get_array(sfc_input, 'ol4',   ol4)
+    !
+    if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
+        control%gwd_opt==2 .or. control%gwd_opt==22 ) then
+       call mpas_pool_get_array(sfc_input, 'var2dss', var2dss)
+       call mpas_pool_get_array(sfc_input, 'conss',   conss)
+       call mpas_pool_get_array(sfc_input, 'oa1ss',   oa1ss)
+       call mpas_pool_get_array(sfc_input, 'oa2ss',   oa2ss)
+       call mpas_pool_get_array(sfc_input, 'oa3ss',   oa3ss)
+       call mpas_pool_get_array(sfc_input, 'oa4ss',   oa4ss)
+       call mpas_pool_get_array(sfc_input, 'ol1ss',   ol1ss)
+       call mpas_pool_get_array(sfc_input, 'ol2ss',   ol2ss)
+       call mpas_pool_get_array(sfc_input, 'ol3ss',   ol3ss)
+       call mpas_pool_get_array(sfc_input, 'ol4ss',   ol4ss)
+    end if
+
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          surface % hprime(iCol,1) = var2d(iCol)
+          surface % oc(iCol)       = con(iCol)
+          surface % oa4(iCol,1)    = oa1(iCol)
+          surface % oa4(iCol,2)    = oa2(iCol)
+          surface % oa4(iCol,3)    = oa3(iCol)
+          surface % oa4(iCol,4)    = oa4(iCol)
+          surface % clx(iCol,1)    = ol1(iCol)
+          surface % clx(iCol,2)    = ol2(iCol)
+          surface % clx(iCol,3)    = ol3(iCol)
+          surface % clx(iCol,4)    = ol4(iCol)
+          ! DJS: Where are these set? Do we need them?
+          !      drag_suite_run doesn't use these...
+          !      GFS_GWD_generic_pre sets them to zero, since mntvar(11:14) is initialized to zero.
+          !surface % gamma(iCol) = 
+          !surface % sigma(iCol) = 
+          !surface % theta(iCol) = 
+          !surface % elvmax(iCol = 
+          if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
+              control%gwd_opt==2 .or. control%gwd_opt==22 ) then
+             surface % varss(iCol)   = var2dss(iCol)
+             surface % ocss(iCol)    = conss(iCol)
+             surface % oa4ss(iCol,1) = oa1ss(iCol)
+             surface % oa4ss(iCol,2) = oa2ss(iCol)
+             surface % oa4ss(iCol,3) = oa3ss(iCol)
+             surface % oa4ss(iCol,4) = oa4ss(iCol)
+             surface % clxss(iCol,1) = ol1ss(iCol)
+             surface % clxss(iCol,2) = ol2ss(iCol)
+             surface % clxss(iCol,3) = ol3ss(iCol)
+             surface % clxss(iCol,4) = ol4ss(iCol)
+          end if
+       end do
+    end do
+
+  end subroutine ufs_mpas_gwd_to_physics
+
+  !> #########################################################################################
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
   !> #########################################################################################
@@ -920,7 +982,8 @@ contains
     use GFS_typedefs,         only : GFS_diag_type
     use GFS_typedefs,         only : GFS_tbd_type
     use mpas_derived_types,   only : mpas_pool_type
-    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array, mpas_pool_get_config
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension
+    use mpas_pool_routines,   only : mpas_pool_get_array, mpas_pool_get_config
 
     ! Arguments
     type(GFS_control_type), intent(in) :: control
