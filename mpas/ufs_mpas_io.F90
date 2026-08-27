@@ -118,6 +118,7 @@ module ufs_mpas_io
        var_info_type('qv_init'                         , 'real'      , 1), &
        var_info_type('rdzu'                            , 'real'      , 1), &
        var_info_type('rdzw'                            , 'real'      , 1), &
+       var_info_type('soiltemp'                        , 'real'      , 1), &
        var_info_type('t_init'                          , 'real'      , 2), &
        var_info_type('u_init'                          , 'real'      , 1), &
        var_info_type('v_init'                          , 'real'      , 1), &
@@ -148,9 +149,11 @@ module ufs_mpas_io
   type(var_info_type), parameter :: input_var_info_list(*) = [ &
        var_info_type('Time'                            , 'real'      , 0), &
        var_info_type('initial_time'                    , 'character' , 0), &
+       var_info_type('relhum'                          , 'real'      , 2), &
        var_info_type('rho'                             , 'real'      , 2), &
        var_info_type('rho_base'                        , 'real'      , 2), &
        var_info_type('scalars'                         , 'real'      , 3), &
+       var_info_type('surface_pressure'                , 'real'      , 1), &
        var_info_type('theta'                           , 'real'      , 2), &
        var_info_type('theta_base'                      , 'real'      , 2), &
        var_info_type('u'                               , 'real'      , 2), &
@@ -205,6 +208,7 @@ module ufs_mpas_io
        var_info_type('xice'                            , 'real'      , 1), &
        var_info_type('xland'                           , 'real'      , 1), &
        var_info_type('dzs'                             , 'real'      , 2), &
+       var_info_type('zs'                              , 'real'      , 2), &
        var_info_type('sh2o'                            , 'real'      , 2), &
        var_info_type('smois'                           , 'real'      , 2), &
        var_info_type('tslb'                            , 'real'      , 2), &
@@ -216,8 +220,13 @@ module ufs_mpas_io
        var_info_type('shdmin'                          , 'real'      , 1), &
        var_info_type('shdmax'                          , 'real'      , 1), &
        var_info_type('snoalb'                          , 'real'      , 1), &
+       var_info_type('soiltemp'                        , 'real'      , 1), &
        var_info_type('greenfrac'                       , 'real'      , 2), &
        var_info_type('albedo12m'                       , 'real'      , 2), &
+       var_info_type('landusef'                        , 'real'      , 2), &
+       var_info_type('soilf'                           , 'real'      , 2), &
+       var_info_type('lai12m'                          , 'real'      , 2), &
+       var_info_type('canwat'                          , 'real'      , 1), &
        var_info_type('soilcl1'                         , 'real'      , 1), &
        var_info_type('soilcl2'                         , 'real'      , 1), &
        var_info_type('soilcl3'                         , 'real'      , 1), &
@@ -333,8 +342,9 @@ module ufs_mpas_io
        var_info_type('ust'                             , 'real'      , 1), &
        var_info_type('xicem'                           , 'real'      , 1), &
        var_info_type('z0'                              , 'real'      , 1), &
-       var_info_type('znt'                             , 'real'      , 1) &
+       var_info_type('znt'                             , 'real'      , 1)  &
        ]
+
   !> #########################################################################################
   !> Data from MPAS LANDUSE.TBL (read in during init)
   !> #########################################################################################
@@ -342,6 +352,14 @@ module ufs_mpas_io
   character(len=StrKIND) :: lutype
   real(kind=RKIND) :: li
   real(kind=RKIND),dimension(:,:),allocatable :: albd,slmo,sfem,sfz0,therin,scfx,sfhc
+
+  !> #########################################################################################
+  !> Data from MPAS GENPARM.TBL (read in during init)
+  !> #########################################################################################
+  integer :: num_slope
+  real(kind=RKIND),dimension(:),allocatable :: slope_data
+  real(kind=RKIND) :: sbeta_data, fxexp_data, csoil_data, salp_data, refdk_data, refkdt_data
+  real(kind=RKIND) :: frzk_data, zbot_data, czil_data, smlow_data, smhigh_data
 
 contains
 
@@ -406,7 +424,8 @@ contains
   end subroutine ufs_mpas_open_oro
 
   !> #########################################################################################
-  !> 
+  !>  Procedure to read in file containing surface properties, LANDUSE.TBL.
+  !>
   !> #########################################################################################
   subroutine ufs_mpas_landuse_read(mpicomm, me, master)
     use module_mpas_config,  only : mpas_landuse_file, mpas_land_funit
@@ -421,7 +440,7 @@ contains
     type(mpas_pool_type), pointer :: sfc_input
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_landuse_read'
 
-    call mpas_log_write(subname //'   Reading/broadcasting MPAS landuse data ', messageType=MPAS_LOG_WARN)
+    call mpas_log_write(subname //'   Reading/broadcasting MPAS landuse data ')
 
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input',    sfc_input)
     call mpas_pool_get_array(sfc_input,'mminlu'    ,mminlu  )
@@ -440,10 +459,10 @@ contains
 
           if(lutype .eq. mminlu)then
              call mpas_log_write(subname //'   landuse type = ' // trim (lutype) // ' found '// stringify([lucats]) &
-                  // ' categories '// stringify([luseas])//' seasons', messageType=MPAS_LOG_WARN)
+                  // ' categories '// stringify([luseas])//' seasons')
              lumatch=1
           else
-             call mpas_log_write(subname //'   skipping over lutype = ' // trim (lutype), messageType=MPAS_LOG_WARN)
+             call mpas_log_write(subname //'   skipping over lutype = ' // trim (lutype))
              do is = 1,luseas
                 read(unit=mpas_land_funit,fmt=*,iostat=io)
                 do ic = 1,lucats
@@ -505,10 +524,110 @@ contains
     call mpi_bcast(scfx,    size(scfx),   mpi_real,     master, mpicomm, io)
     if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of scfx",    messageType=MPAS_LOG_CRIT)
 
-    call mpas_log_write(subname //'   Finished reading/broadcasting MPAS landuse data ', messageType=MPAS_LOG_WARN)
+    call mpas_log_write(subname //'   Finished reading/broadcasting MPAS landuse data ')
 
   end subroutine ufs_mpas_landuse_read
-  
+
+  !> #########################################################################################
+  !> Procedure to read in slope data needed by RUC LSM.
+  !>
+  !> #########################################################################################
+  subroutine use_mpas_slopedata_read(mpicomm, me, master)
+    use module_mpas_config,  only : mpas_genparm_file, mpas_gprm_funit
+    use mpas_log,            only : mpas_log_write
+    use mpas_derived_types,  only : MPAS_LOG_ERR, MPAS_LOG_WARN, MPAS_LOG_CRIT
+    !
+    type(MPI_Comm), intent(in) :: mpicomm
+    integer,        intent(in) :: me, master
+    ! Locals
+    integer :: io, lc, slpcats
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_genparm_read'
+
+    call mpas_log_write(subname //'   Reading/broadcasting MPAS RUC LSM slope data ')
+
+    ! Read in data dimensions (master processor)
+    if (me == master) then
+       open(newunit=mpas_gprm_funit,file=trim(mpas_genparm_file),form='FORMATTED',status='OLD',iostat=io)
+       if (io /= 0) then
+          call mpas_log_write(subname // " failed to open GENPARM.TBL", messageType=MPAS_LOG_CRIT)
+       endif
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) num_slope
+
+       slpcats=num_slope
+    end if
+
+    ! Broadcast data dimensions (all processors)
+    call mpi_barrier(mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure waiting for other MPI processes",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(num_slope,  1, mpi_real, master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of num_slope", messageType=MPAS_LOG_CRIT)
+
+    ! Allocate space (all processors)
+    allocate(slope_data(num_slope))
+
+    ! Read data (master processor)
+    if (me == master) then
+       do lc = 1, slpcats
+          read(mpas_gprm_funit,*) slope_data(lc)
+       enddo
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) sbeta_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) fxexp_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) csoil_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) salp_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) refdk_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) refkdt_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) frzk_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) zbot_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) czil_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) smlow_data
+       read(mpas_gprm_funit,*)
+       read(mpas_gprm_funit,*) smhigh_data
+       close(mpas_gprm_funit)
+    end if
+
+    ! Broadcast data (all processors)
+    call mpi_barrier(mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure waiting for other MPI processes",      messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(slope_data,   size(slope_data),  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of slope_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(sbeta_data,   1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of sbeta_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(fxexp_data,   1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of fxexp_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(csoil_data,   1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of csoil_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(salp_data,    1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of salp_data",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(refdk_data,   1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of refdk_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(refkdt_data,  1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of refkdt_data",  messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(frzk_data,    1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of frzk_data",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(zbot_data,    1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of zbot_data",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(czil_data,    1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of czil_data",    messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(smlow_data,   1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of smlow_data",   messageType=MPAS_LOG_CRIT)
+    call mpi_bcast(smhigh_data,  1,  mpi_real,     master, mpicomm, io)
+    if (io /= 0) call mpas_log_write(subname // " failure during MPI Broadcast of smhigh_data",  messageType=MPAS_LOG_CRIT)
+
+    call mpas_log_write(subname //'   Finished reading/broadcasting MPAS RUC LSM slope data ')
+  end subroutine use_mpas_slopedata_read
+
   !> #########################################################################################
   !> Procedure to read in stream_list (a.k.a File with fields to include in output stream)
   !> 
