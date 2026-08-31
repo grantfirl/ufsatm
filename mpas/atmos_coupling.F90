@@ -5,7 +5,7 @@
 ! ###########################################################################################
 module atmos_coupling_mod
   use mpas_kind_types, only : strKIND, RKIND
-  use ufs_mpas_io,     only : domain_ptr
+  use ufs_mpas_io,     only : domain_ptr,dyn_mpas_exchange_halo
   use ufs_mpas_io,     only : lucats,lumatch,luseas,lutype,li,albd,slmo,sfem,sfz0,therin,scfx,sfhc
   
   implicit none
@@ -248,16 +248,18 @@ contains
   end subroutine ufs_mpas_to_physics
 
   !> #########################################################################################
-  !> Procedure to update MPAS state with physics (CCPP) tendencies.
+  !> Procedure to update MPAS prognostic tendencies with physics (CCPP) tendencies.
   !> Called AFTER physics, BEFORE calling dynamics (current timestep).
   !>
-  !> - Convert from theta to theta_m (tend_theta_phys)
-  !> - Update dynamic tendencies. (tend_theta_dyn)
-  !> - Update scalar tendencies (tend_scalars_dyn)
+  !> - Update scalar tendencies "scalars_tend" from MPAS "tend" pool
+  !> - Convert from potential temerature (theta) to modified potential temperature (theta_m).
+  !> - Update "theta_m" tendency from MPAS "tend" pool
+  !> - Compute winds on grid edges
+  !> - Update "ru" tendency from MPAS "tend" pool
   !>
   !> Analogous to phys_get_tend in physics/mpas_atmphys_todynamics.F
-  !> Here, instead of updating the state with physics tendencies from the MPAS "tend_pool", we
-  !> will use tendencies from the CCPP Physics data containers.
+  !> Here, instead of updating the state with physics tendencies from the MPAS "tend_phys"
+  !> pool, we use tendencies from the CCPP Physics data containers.
   !>
   !> #########################################################################################
   subroutine ufs_physics_to_mpas(physics_state)
@@ -270,13 +272,15 @@ contains
     type(GFS_stateout_type), intent(in) :: physics_state
 
     ! Locals
-    type(mpas_pool_type),  pointer :: state_pool, mesh_pool, tend_pool, diag_pool
-    real(kind=RKIND), pointer :: mass(:,:), exner(:,:), theta_m(:,:), zgrid(:,:), zz(:,:)
+    type(mpas_pool_type),  pointer :: state_pool, mesh_pool, tend_pool, diag_pool, tend_phys
+    real(kind=RKIND), pointer :: mass(:,:), mass_edge(:,:), exner(:,:), theta_m(:,:), zgrid(:,:), zz(:,:)
     real(kind=RKIND), pointer :: pressure_b(:,:), pressure_p(:,:), tend_th_phys(:,:)
     real(kind=RKIND), pointer :: tend_theta_phys(:,:), tend_theta_dyn(:,:)
+    real(kind=RKIND), pointer :: tend_u_phys(:,:), tend_ru_dyn(:,:)
+    real(kind=RKIND), pointer :: tend_uzonal(:,:), tend_umerid(:,:)
     real(kind=RKIND), pointer :: scalars(:,:,:), tend_scalars_phys(:,:,:), tend_scalars_dyn(:,:,:)
     real(kind=RKIND), pointer :: surface_pressure(:)
-    integer, pointer :: nCellsSolve, num_scalars, nVertLevels 
+    integer, pointer :: nCells, nCellsSolve, num_scalars, nVertLevels, nEdges, nEdgesSolve
     integer, pointer :: index_qv => null()
     integer, pointer :: index_qc => null()
     integer, pointer :: index_qi => null()
@@ -290,22 +294,27 @@ contains
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol,iLay,ithread,iScalar
     real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
+    logical :: debug=.false.
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_physics_to_mpas'
 
     ! Get openMP information
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nEdges',               nEdges)
+    call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nEdgesSolve',          nEdgesSolve)
 
     ! Access MPAS data pools
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state_pool)
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',  tend_pool)
-    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',  diag_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state',        state_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',         mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend',         tend_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag',         diag_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'tend_physics', tend_phys)
 
     ! Get MPAS dimensions
     call mpas_pool_get_dimension(mesh_pool,  'nCellsSolve', nCellsSolve)
     call mpas_pool_get_dimension(mesh_pool,  'nVertLevels', nVertLevels)
+    call mpas_pool_get_dimension(mesh_pool,  'nCells',      nCells)
     call mpas_pool_get_dimension(state_pool, 'num_scalars', num_scalars)
     call mpas_pool_get_dimension(state_pool, 'index_qv',    index_qv)
     call mpas_pool_get_dimension(state_pool, 'index_qc',    index_qc)
@@ -324,120 +333,175 @@ contains
     call mpas_pool_get_array(state_pool,'rho_zz',           mass,   1)
     call mpas_pool_get_array(mesh_pool, 'zz',               zz)
     call mpas_pool_get_array(mesh_pool, 'zgrid',            zgrid)
+    call mpas_pool_get_array(diag_pool, 'rho_edge',         mass_edge)
     call mpas_pool_get_array(diag_pool, 'surface_pressure', surface_pressure)
     call mpas_pool_get_array(diag_pool, 'pressure_base',    pressure_b)
     call mpas_pool_get_array(diag_pool, 'pressure_p',       pressure_p)
     call mpas_pool_get_array(diag_pool, 'exner',            exner)
+    call mpas_pool_get_array(tend_phys, 'tend_uzonal',      tend_uzonal)
+    call mpas_pool_get_array(tend_phys, 'tend_umerid',      tend_umerid)
 
-    ! Allocate local variables
+    ! Allocate/initialize local variables
     allocate(tend_th_phys(nVertLevels,nCellsSolve+1))
     allocate(tend_theta_phys(nVertLevels,nCellsSolve+1))
     allocate(tend_scalars_phys(num_scalars, nVertLevels,nCellsSolve+1))
+    allocate(tend_u_phys(nVertLevels,nEdges+1))
     tend_th_phys(:,:)        = 0._RKIND
     tend_theta_phys(:,:)     = 0._RKIND
     tend_scalars_phys(:,:,:) = 0._RKIND
+    tend_u_phys(:,:)         = 0._RKIND
 
-    ! GJF: Add accumulated tendencies from the physics group
+    !> GJF: Add accumulated tendencies from the physics group
+
+    !> #####################################################################################
+    !> 1) Update MPAS "scalar" tendencies.
+    !> #####################################################################################
+
+    ! Specific humidity
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels 
-          tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (physics_state % dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
-          tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
+           tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + &
+                physics_state % dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         end do
       end do
     end do
 
+    ! Liquid cloud water
     if(associated(index_qc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
+             tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Ice cloud water
     if(associated(index_qi)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
+             tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Rain water
     if(associated(index_qr)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
+             tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Snow
     if(associated(index_qs)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
+             tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Graupel
     if(associated(index_qg)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
+             tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Liquid number concentration
     if(associated(index_nc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
+             tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! Ice number concentration
     if(associated(index_ni)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
+             tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! "Ice friendly" aerosol number concentration
     if(associated(index_nifa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
+             tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
+    ! "Water friendly" aerosol number concentration
     if(associated(index_nwfa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1,nVertLevels 
-            tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + physics_state % dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
+             tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + &
+                  physics_state % dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
           end do
         end do
       end do
     end if
 
-    ! Convert from potential temperature to modified potential temperature (theta -> theta_m)
+    ! Update MPAS tendencies (scalars)
+    call mpas_pool_get_array(tend_pool, 'scalars_tend', tend_scalars_dyn)
+    do ithread = 1,nThreads
+       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1, nVertLevels
+             do iScalar = 1, num_scalars
+                tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalars_phys(iScalar,iLay,iCol)
+             end do
+          end do
+       end do
+    end do
+
+    !> #####################################################################################
+    !> 2) Update MPAS tendency "theta_m"
+    !> #####################################################################################
+    ! Add accumulated temperature tendencies from the physics group, convert from temperature
+    ! to rho*potential temperature (T -> rtheta).
+    do ithread=1,nThreads
+       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          do iLay = 1,nVertLevels
+             tend_th_phys(iLay,iCol) = tend_th_phys(iLay,iCol) + (physics_state % dtdt(iCol,iLay)/exner(iLay,iCol))*mass(iLay,iCol)
+          end do
+       end do
+    end do
+
+    ! Convert from the tendency of potential temperature to the tendency of the  modified
+    ! potential temperature (rtheta -> rtheta_m).
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
@@ -448,32 +512,49 @@ contains
        end do
     end do
 
-    ! Update MPAS state tendencies
+    ! Update MPAS tendency (theta_m)
     call mpas_pool_get_array(tend_pool, 'theta_m', tend_theta_dyn)
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
           do iLay = 1, nVertLevels
-               tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)
+               tend_theta_dyn(iLay,iCol) = tend_theta_dyn(iLay,iCol) + tend_theta_phys(iLay,iCol)*mass(iLay,iCol)
           end do
        end do
     end do
 
-    call mpas_pool_get_array(tend_pool, 'scalars_tend', tend_scalars_dyn)
+    !> #####################################################################################
+    !> 3) Update MPAS tendency "ru"
+    !> #####################################################################################
+
+    ! First, need to regrid from grid-centers (physics) to grid-edges (dynamics)...
+    ! Copy CCPP accumulated physics tendencies to MPAS scratch arrays.
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1, nVertLevels
-             do iScalar = 1, num_scalars
-               tend_scalars_dyn(iScalar,iLay,iCol) = tend_scalars_dyn(iScalar,iLay,iCol) + tend_scalars_phys(iScalar,iLay,iCol)
-             end do
-          end do
+           do iLay = 1, nVertLevels
+              tend_uzonal(iLay,iCol) = physics_state % dudt(iCol,iLay)
+              tend_umerid(iLay,iCol) = physics_state % dvdt(iCol,iLay)
+           end do
        end do
     end do
 
-    ! Housekeeping
-    deallocate(tend_th_phys)
-    deallocate(tend_theta_phys)
-    deallocate(tend_scalars_phys)
-    
+    ! Next, update the halo points of the scratch arrays.
+    call dyn_mpas_exchange_halo('tend_uzonal',debug)
+    call dyn_mpas_exchange_halo('tend_umerid',debug)
+
+    ! Finally, compute wind tendency at grid-edges.
+    call tend_toEdges(mesh_pool, tend_uzonal, tend_umerid, tend_u_phys)
+
+    ! Update MPAS tendency (ru)
+    call mpas_pool_get_array(tend_pool, 'u', tend_ru_dyn)
+    do iCol = 1,nEdgesSolve
+       do iLay = 1, nVertLevels
+          tend_ru_dyn(iLay,iCol) = tend_ru_dyn(iLay,iCol) + tend_u_phys(iLay,iCol)*mass_edge(iLay,iCol)
+       end do
+    end do
+
+    !> #####################################################################################
+    !> Diagnostics
+    !> #####################################################################################
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
     do ithread = 1,nThreads
@@ -490,9 +571,15 @@ contains
     enddo
 
     ! Housekeeping
+    deallocate(tend_th_phys)
+    deallocate(tend_theta_phys)
+    deallocate(tend_scalars_phys)
+    deallocate(tend_u_phys)
     nullify (state_pool)
     nullify (mesh_pool)
     nullify (diag_pool)
+    nullify (tend_phys)
+
   end subroutine ufs_physics_to_mpas
 
   !> #########################################################################################
@@ -879,7 +966,7 @@ contains
   end subroutine ufs_mpas_sfc_to_physics
 
   !> #########################################################################################
-  !> Procedure to populate CCPP surface properties data container with MPAS pool data.
+  !> Procedure to populate CCPP data container with MPAS pool data.
   !> Initial condition fields needed by the CCPP GWD parameterization.
   !> 
   !> #########################################################################################
@@ -1191,5 +1278,54 @@ contains
 
     call mpas_log_write(subname //'   Finished updating MPAS surface properties ', messageType=MPAS_LOG_WARN)
   end subroutine ufs_mpas_landuse_update
+
+  !> ########################################################################################
+  !> Interpolate wind-tendencies from centers to edges of grid-cells.
+  !>
+  !> See MPAS-Model/src/core_atmosphere/physics/mpas_atmphys_todynamics.F: tend_toEdges
+  !> ########################################################################################
+  subroutine tend_toEdges(mesh,Ux_tend,Uy_tend,U_tend)
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_pool_routines,   only : mpas_pool_get_dimension, mpas_pool_get_array
+
+    type(mpas_pool_type),intent(in):: mesh
+    real(kind=RKIND),intent(in),dimension(:,:),target:: Ux_tend,Uy_tend
+    real(kind=RKIND),intent(out),dimension(:,:):: U_tend
+
+    ! locals
+    integer:: iCell,iEdge,k,j
+    integer:: cell1, cell2
+    integer,pointer:: nCells,nCellsSolve,nEdges
+    integer,dimension(:,:),pointer:: cellsOnEdge
+    real(kind=RKIND),dimension(:,:),pointer:: east,north,edgeNormalVectors
+
+    ! Grab dimensions
+    call mpas_pool_get_dimension(mesh,'nCells',nCells)
+    call mpas_pool_get_dimension(mesh,'nCellsSolve',nCellsSolve)
+    call mpas_pool_get_dimension(mesh,'nEdges',nEdges)
+
+    ! Grad arrays
+    call mpas_pool_get_array(mesh,'east',east)
+    call mpas_pool_get_array(mesh,'north',north)
+    call mpas_pool_get_array(mesh,'edgeNormalVectors',edgeNormalVectors)
+    call mpas_pool_get_array(mesh,'cellsOnEdge',cellsOnEdge)
+
+    do iEdge = 1, nEdges
+       cell1 = cellsOnEdge(1,iEdge)
+       cell2 = cellsOnEdge(2,iEdge)
+       U_tend(:,iEdge) =  Ux_tend(:,cell1) * 0.5 * (edgeNormalVectors(1,iEdge) * east(1,cell1)   &
+                                                 +  edgeNormalVectors(2,iEdge) * east(2,cell1)   &
+                                                 +  edgeNormalVectors(3,iEdge) * east(3,cell1))  &
+                        + Uy_tend(:,cell1) * 0.5 * (edgeNormalVectors(1,iEdge) * north(1,cell1)  &
+                                                 +  edgeNormalVectors(2,iEdge) * north(2,cell1)  &
+                                                 +  edgeNormalVectors(3,iEdge) * north(3,cell1)) &
+                        + Ux_tend(:,cell2) * 0.5 * (edgeNormalVectors(1,iEdge) * east(1,cell2)   &
+                                                 +  edgeNormalVectors(2,iEdge) * east(2,cell2)   &
+                                                 +  edgeNormalVectors(3,iEdge) * east(3,cell2))  &
+                        + Uy_tend(:,cell2) * 0.5 * (edgeNormalVectors(1,iEdge) * north(1,cell2)  &
+                                                 +  edgeNormalVectors(2,iEdge) * north(2,cell2)  &
+                                                 +  edgeNormalVectors(3,iEdge) * north(3,cell2))
+    end do
+  end subroutine tend_toEdges
   
 end module atmos_coupling_mod

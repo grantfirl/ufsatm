@@ -384,6 +384,7 @@ contains
     real(RKIND), dimension(:,:,:), pointer :: field_3d_real
     logical, pointer :: config_apply_lbcs
     real(RKIND), dimension(:,:), pointer :: theta1
+    type(field2dreal), pointer :: field_2d_real
 
     !
     ! Setup threading
@@ -539,6 +540,17 @@ contains
     !
     call mpas_log_write('Initializing the dynamics')
     call mpas_atm_dynamics_init(domain_ptr)
+
+    !
+    ! Allocate additional scratch fields. These are not allocated by MPAS.
+    !
+    call mpas_pool_get_field(domain_ptr % blocklist % allfields, 'tend_uzonal', field_2d_real, timelevel=1)
+    call mpas_allocate_scratch_field(field_2d_real)
+    nullify(field_2d_real)
+
+    call mpas_pool_get_field(domain_ptr % blocklist % allfields, 'tend_umerid', field_2d_real, timelevel=1)
+    call mpas_allocate_scratch_field(field_2d_real)
+    nullify(field_2d_real)
 
     call mpas_log_write('Successful initialization of MPAS dynamical core')
 
