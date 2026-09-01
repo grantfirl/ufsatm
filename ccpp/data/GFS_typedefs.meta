@@ -475,6 +475,20 @@
   dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
+[dp]
+  standard_name = air_pressure_difference_between_levels
+  long_name = layer air pressure thickness
+  units = Pa
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
+[dpc]
+  standard_name = air_pressure_difference_between_midlayers
+  long_name = air pressure difference between midlayers
+  units = Pa
+  dimensions = (horizontal_dimension,vertical_layer_dimension)
+  type = real
+  kind = kind_phys
 
 ########################################################################
 [ccpp-table-properties]

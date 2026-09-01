@@ -153,6 +153,8 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: phil  (:,:) => null()   !< layer geopotential height
     real (kind=kind_phys), pointer :: prsl  (:,:) => null()   !< model layer mean pressure Pa
     real (kind=kind_phys), pointer :: prslk (:,:) => null()   !< exner function = (p/p0)**rocp
+    real (kind=kind_phys), pointer :: dp    (:,:) => null()   !< model layer thickness (Pa)
+    real (kind=kind_phys), pointer :: dpc   (:,:) => null()   !< air pressure difference between midlayers (Pa)
 
 !--- layer and level heights
     real (kind=kind_phys), pointer :: zgrid (:,:) => null()   !< layer height (m)
@@ -2364,10 +2366,14 @@ module GFS_typedefs
     allocate (Statein%phil  (IM,Model%levs))
     allocate (Statein%prsl  (IM,Model%levs))
     allocate (Statein%prslk (IM,Model%levs))
+    allocate (Statein%dp    (IM,Model%levs))
+    allocate (Statein%dpc   (IM,Model%levs))
 
     Statein%phil  = clear_val
     Statein%prsl  = clear_val
     Statein%prslk = clear_val
+    Statein%dp    = clear_val
+    Statein%dpc   = clear_val
 
     !--- layer and level heights
     allocate (Statein%zgrid  (IM,Model%levs))

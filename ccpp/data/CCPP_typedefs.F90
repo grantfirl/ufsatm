@@ -88,7 +88,6 @@ module CCPP_typedefs
     real (kind=kind_phys), pointer      :: cumabs(:)          => null()  !<
     real (kind=kind_phys), pointer      :: dd_mf(:,:)         => null()  !<
     real (kind=kind_phys), pointer      :: de_lgth(:)         => null()  !<
-    real (kind=kind_phys), pointer      :: del(:,:)           => null()  !<
     real (kind=kind_phys), pointer      :: del_gz(:,:)        => null()  !<
     real (kind=kind_phys), pointer      :: delr(:,:)          => null()  !<
     real (kind=kind_phys), pointer      :: dlength(:)         => null()  !<
@@ -523,7 +522,6 @@ contains
     allocate (Interstitial%cumabs          (ixs:ixe))
     allocate (Interstitial%dd_mf           (ixs:ixe,Model%levs))
     allocate (Interstitial%de_lgth         (ixs:ixe))
-    allocate (Interstitial%del             (ixs:ixe,Model%levs))
     allocate (Interstitial%del_gz          (ixs:ixe,Model%levs+1))
     allocate (Interstitial%delr            (ixs:ixe,Model%levr+LTP))
     allocate (Interstitial%dlength         (ixs:ixe))
@@ -854,7 +852,6 @@ contains
     deallocate (Interstitial%cumabs)
     deallocate (Interstitial%dd_mf)
     deallocate (Interstitial%de_lgth)
-    deallocate (Interstitial%del)
     deallocate (Interstitial%del_gz)
     deallocate (Interstitial%delr)
     deallocate (Interstitial%dlength)
@@ -1385,7 +1382,6 @@ contains
     Interstitial%cumabs          = clear_val
     Interstitial%dd_mf           = clear_val
     Interstitial%de_lgth         = clear_val
-    Interstitial%del             = clear_val
     Interstitial%del_gz          = clear_val
     Interstitial%delr            = clear_val
     Interstitial%dlength         = clear_val

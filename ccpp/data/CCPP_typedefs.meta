@@ -470,13 +470,6 @@
   dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
-[del]
-  standard_name = air_pressure_difference_between_midlayers
-  long_name = air pressure difference between midlayers
-  units = Pa
-  dimensions = (horizontal_dimension,vertical_layer_dimension)
-  type = real
-  kind = kind_phys
 [del_gz]
   standard_name = geopotential_difference_between_midlayers_divided_by_midlayer_virtual_temperature
   long_name = difference between mid-layer geopotentials divided by mid-layer virtual temperature
