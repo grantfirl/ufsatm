@@ -232,7 +232,18 @@ contains
           do iLay = nVertLevels,1,-1
              physics_state % prsl(iCol,iLay) = 0.5*(physics_state % prsi(iCol,iLay+1) + physics_state % prsi(iCol,iLay) )
           end do
-          ! surface pressure:
+          ! Pressure layer thickness
+          do iLay = 1,nVertLevels
+             physics_state % dp(iCol,iLay) = physics_state % prsi(iCol,iLay) - physics_state % prsi(iCol,iLay+1)
+          end do
+          ! Pressure difference across layer-centers
+          physics_state % dp(iCol,1) = physics_state % prsi(iCol,1) - physics_state % prsi(iCol,2)
+          do iLay = 2,nVertLevels
+             physics_state % dp(iCol,iLay) = physics_state % prsi(iCol,iLay) - physics_state % prsi(iCol,iLay+1)
+             physics_state % dpc(iCol,iLay)  = physics_state % prsl(iCol,iLay-1) - physics_state % prsl(iCol,iLay)
+          end do
+          physics_state % dpc(iCol,1)  = physics_state % prsi(iCol,1) - physics_state % prsl(iCol,1)
+          ! Surface pressure
           physics_state % pgr(iCol) = physics_state % prsi(iCol,1)
        end do
     end do
@@ -986,6 +997,8 @@ contains
     real(RKIND), pointer :: ol1(:), ol2(:), ol3(:), ol4(:)
     real(RKIND), pointer :: var2dss(:), conss(:), oa1ss(:), oa2ss(:), oa3ss(:), oa4ss(:)
     real(RKIND), pointer :: ol1ss(:), ol2ss(:), ol3ss(:), ol4ss(:)
+    real(RKIND), pointer :: var2dls(:), conls(:), oa1ls(:), oa2ls(:), oa3ls(:), oa4ls(:)
+    real(RKIND), pointer :: ol1ls(:), ol2ls(:), ol3ls(:), ol4ls(:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_gwd_to_physics'
 
     ! Get openMP information
@@ -997,6 +1010,7 @@ contains
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',      mesh_pool)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
 
+    ! DJS: Do we need these? Only used when coupling to YSU scheme?
     call mpas_pool_get_array(sfc_input, 'var2d', var2d)
     call mpas_pool_get_array(sfc_input, 'con',   con)
     call mpas_pool_get_array(sfc_input, 'oa1',   oa1)
@@ -1020,10 +1034,21 @@ contains
        call mpas_pool_get_array(sfc_input, 'ol2ss',   ol2ss)
        call mpas_pool_get_array(sfc_input, 'ol3ss',   ol3ss)
        call mpas_pool_get_array(sfc_input, 'ol4ss',   ol4ss)
+       call mpas_pool_get_array(sfc_input, 'var2dls', var2dls)
+       call mpas_pool_get_array(sfc_input, 'conls',   conls)
+       call mpas_pool_get_array(sfc_input, 'oa1ls',   oa1ls)
+       call mpas_pool_get_array(sfc_input, 'oa2ls',   oa2ls)
+       call mpas_pool_get_array(sfc_input, 'oa3ls',   oa3ls)
+       call mpas_pool_get_array(sfc_input, 'oa4ls',   oa4ls)
+       call mpas_pool_get_array(sfc_input, 'ol1ls',   ol1ls)
+       call mpas_pool_get_array(sfc_input, 'ol2ls',   ol2ls)
+       call mpas_pool_get_array(sfc_input, 'ol3ls',   ol3ls)
+       call mpas_pool_get_array(sfc_input, 'ol4ls',   ol4ls)
     end if
 
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
+          ! DJS: Do we need these? Only used when coupling to YSU scheme?
           surface % hprime(iCol,1) = var2d(iCol)
           surface % oc(iCol)       = con(iCol)
           surface % oa4(iCol,1)    = oa1(iCol)
@@ -1037,22 +1062,33 @@ contains
           ! DJS: Where are these set? Do we need them?
           !      drag_suite_run doesn't use these...
           !      GFS_GWD_generic_pre sets them to zero, since mntvar(11:14) is initialized to zero.
+          !      Not using GFS_GWD_generic_pre in UFS-MPAS, instead these are initializaed to zero elsewhere.
           !surface % gamma(iCol) = 
           !surface % sigma(iCol) = 
           !surface % theta(iCol) = 
           !surface % elvmax(iCol = 
           if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
               control%gwd_opt==2 .or. control%gwd_opt==22 ) then
-             surface % varss(iCol)   = var2dss(iCol)
-             surface % ocss(iCol)    = conss(iCol)
-             surface % oa4ss(iCol,1) = oa1ss(iCol)
-             surface % oa4ss(iCol,2) = oa2ss(iCol)
-             surface % oa4ss(iCol,3) = oa3ss(iCol)
-             surface % oa4ss(iCol,4) = oa4ss(iCol)
-             surface % clxss(iCol,1) = ol1ss(iCol)
-             surface % clxss(iCol,2) = ol2ss(iCol)
-             surface % clxss(iCol,3) = ol3ss(iCol)
-             surface % clxss(iCol,4) = ol4ss(iCol)
+             surface % hprime(iCol,1) = var2dls(iCol)
+             surface % oc(iCol)       = conls(iCol)
+             surface % oa4(iCol,1)    = oa1ls(iCol)
+             surface % oa4(iCol,2)    = oa2ls(iCol)
+             surface % oa4(iCol,3)    = oa3ls(iCol)
+             surface % oa4(iCol,4)    = oa4ls(iCol)
+             surface % clx(iCol,1)    = ol1ls(iCol)
+             surface % clx(iCol,2)    = ol2ls(iCol)
+             surface % clx(iCol,3)    = ol3ls(iCol)
+             surface % clx(iCol,4)    = ol4ls(iCol)
+             surface % varss(iCol)    = var2dss(iCol)
+             surface % ocss(iCol)     = conss(iCol)
+             surface % oa4ss(iCol,1)  = oa1ss(iCol)
+             surface % oa4ss(iCol,2)  = oa2ss(iCol)
+             surface % oa4ss(iCol,3)  = oa3ss(iCol)
+             surface % oa4ss(iCol,4)  = oa4ss(iCol)
+             surface % clxss(iCol,1)  = ol1ss(iCol)
+             surface % clxss(iCol,2)  = ol2ss(iCol)
+             surface % clxss(iCol,3)  = ol3ss(iCol)
+             surface % clxss(iCol,4)  = ol4ss(iCol)
           end if
        end do
     end do
@@ -1062,6 +1098,9 @@ contains
   !> #########################################################################################
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
   !>
+  !> The fields from diag_phys are allocated by MPAS, populated with CCPP Physics data, and
+  !> written to output. So essentially we copy physics arrays back into MPAS memory to use
+  !> MPAS's native output functionality.
   !> #########################################################################################
   subroutine ufs_mpas_phys_diag(control,radiation,diagnostics,tbd)
     use GFS_typedefs,         only : GFS_control_type
@@ -1087,6 +1126,12 @@ contains
     real(RKIND), pointer :: refl10cm(:,:)
     real(RKIND), pointer :: rainc(:),rainnc(:),frainnc(:),snownc(:),graupelnc(:)
     real(RKIND), pointer :: raincv(:),rainncv(:),snowncv(:),graupelncv(:)
+    real(RKIND), pointer :: dusfcg(:),dvsfcg(:),dusfc_ls(:),dvsfc_ls(:)
+    real(RKIND), pointer :: dusfc_bl(:),dvsfc_bl(:),dusfc_ss(:),dvsfc_ss(:)
+    real(RKIND), pointer :: dusfc_fd(:),dvsfc_fd(:)
+    real(RKIND), pointer :: dtaux3d(:,:), dtauy3d(:,:)
+    real(RKIND), pointer :: dtaux3d_ls(:,:), dtauy3d_ls(:,:), dtaux3d_ss(:,:), dtauy3d_ss(:,:)
+    real(RKIND), pointer :: dtaux3d_fd(:,:), dtauy3d_fd(:,:), dtaux3d_bl(:,:), dtauy3d_bl(:,:)
     integer,     pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
     integer :: iCol, ithread
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_phys_diag'
@@ -1123,6 +1168,29 @@ contains
     call mpas_pool_get_array(diag_phys,'re_snow'   , re_snow   )
     call mpas_pool_get_array(diag_phys,'sfc_albedo', sfc_albedo)
     call mpas_pool_get_array(diag_phys,'sfc_emiss' , sfc_emiss )
+    ! UFS GWD diagnostics are conditionally allocated.
+    if (control % ldiag_ugwp .or. control % do_ugwp_v1) then
+       call mpas_pool_get_array(diag_phys,'dusfcg'    , dusfcg    )
+       call mpas_pool_get_array(diag_phys,'dvsfcg'    , dvsfcg    )
+       call mpas_pool_get_array(diag_phys,'dusfc_ls'  , dusfc_ls  )
+       call mpas_pool_get_array(diag_phys,'dvsfc_ls'  , dvsfc_ls  )
+       call mpas_pool_get_array(diag_phys,'dusfc_bl'  , dusfc_bl  )
+       call mpas_pool_get_array(diag_phys,'dvsfc_bl'  , dvsfc_bl  )
+       call mpas_pool_get_array(diag_phys,'dusfc_ss'  , dusfc_ss  )
+       call mpas_pool_get_array(diag_phys,'dvsfc_ss'  , dvsfc_ss  )
+       call mpas_pool_get_array(diag_phys,'dusfc_fd'  , dusfc_fd  )
+       call mpas_pool_get_array(diag_phys,'dvsfc_fd'  , dvsfc_fd  )
+       call mpas_pool_get_array(diag_phys,'dtaux3d'   , dtaux3d   )
+       call mpas_pool_get_array(diag_phys,'dtauy3d'   , dtauy3d   )
+       call mpas_pool_get_array(diag_phys,'dtaux3d_ls', dtaux3d_ls)
+       call mpas_pool_get_array(diag_phys,'dtauy3d_ls', dtauy3d_ls)
+       call mpas_pool_get_array(diag_phys,'dtaux3d_ss', dtaux3d_ss)
+       call mpas_pool_get_array(diag_phys,'dtauy3d_ss', dtauy3d_ss)
+       call mpas_pool_get_array(diag_phys,'dtaux3d_bl', dtaux3d_bl)
+       call mpas_pool_get_array(diag_phys,'dtauy3d_bl', dtauy3d_bl)
+       call mpas_pool_get_array(diag_phys,'dtaux3d_fd', dtaux3d_fd)
+       call mpas_pool_get_array(diag_phys,'dtauy3d_fd', dtauy3d_fd)
+    end if
 
     do ithread = 1,nThreads
        do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
@@ -1155,6 +1223,29 @@ contains
           ! Surface radiative properties
           sfc_albedo(iCol) = radiation%sfalb(iCol)
           sfc_emiss(iCol)  = radiation%semis(iCol)
+          ! Gravity-wave physics diagnostics (conditionally allocated)
+          if (control % ldiag_ugwp .or. control % do_ugwp_v1) then
+             dusfcg(iCol)       = diagnostics%dusfcg(iCol)
+             dvsfcg(iCol)       = diagnostics%dvsfcg(iCol)
+             dusfc_ls(iCol)     = diagnostics%du_ogwcol(iCol)
+             dvsfc_ls(iCol)     = diagnostics%dv_ogwcol(iCol)
+             dusfc_bl(iCol)     = diagnostics%du_oblcol(iCol)
+             dvsfc_bl(iCol)     = diagnostics%dv_oblcol(iCol)
+             dusfc_ss(iCol)     = diagnostics%du_osscol(iCol)
+             dvsfc_ss(iCol)     = diagnostics%dv_osscol(iCol)
+             dusfc_fd(iCol)     = diagnostics%du_ofdcol(iCol)
+             dvsfc_fd(iCol)     = diagnostics%dv_ofdcol(iCol)
+             dtaux3d(:,iCol)    = diagnostics%dudt_gw(iCol,:)
+             dtauy3d(:,iCol)    = diagnostics%dvdt_gw(iCol,:)
+             dtaux3d_ls(:,iCol) = diagnostics%dudt_ogw(iCol,:)
+             dtauy3d_ls(:,iCol) = diagnostics%dvdt_ogw(iCol,:)
+             dtaux3d_ss(:,iCol) = diagnostics%dudt_oss(iCol,:)
+             dtauy3d_ss(:,iCol) = diagnostics%dvdt_oss(iCol,:)
+             dtaux3d_bl(:,iCol) = diagnostics%dudt_obl(iCol,:)
+             dtauy3d_bl(:,iCol) = diagnostics%dvdt_obl(iCol,:)
+             dtaux3d_fd(:,iCol) = diagnostics%dudt_ofd(iCol,:)
+             dtauy3d_fd(:,iCol) = diagnostics%dvdt_ofd(iCol,:)
+          end if
        end do
     end do
   end subroutine ufs_mpas_phys_diag

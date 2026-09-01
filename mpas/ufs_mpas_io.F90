@@ -305,44 +305,64 @@ module ufs_mpas_io
   type(var_info_type), parameter :: diag_phys_var_info_list(*) = [ &
        var_info_type('Time'                            , 'real'      , 0), &
        var_info_type('initial_time'                    , 'character' , 0), &
-       var_info_type('swdnb'                           , 'real'      , 1), &
-       var_info_type('swdnbc'                          , 'real'      , 1), &
-       var_info_type('swdnt'                           , 'real'      , 1), &
-       var_info_type('swdntc'                          , 'real'      , 1), &
-       var_info_type('swupb'                           , 'real'      , 1), &
-       var_info_type('swupbc'                          , 'real'      , 1), &
-       var_info_type('swupt'                           , 'real'      , 1), &
-       var_info_type('swuptc'                          , 'real'      , 1), &
-       var_info_type('lwdnb'                           , 'real'      , 1), &
-       var_info_type('lwdnbc'                          , 'real'      , 1), &
-       var_info_type('lwdnt'                           , 'real'      , 1), &
-       var_info_type('lwdntc'                          , 'real'      , 1), &
-       var_info_type('lwupb'                           , 'real'      , 1), &
-       var_info_type('lwupbc'                          , 'real'      , 1), &
-       var_info_type('lwupt'                           , 'real'      , 1), &
-       var_info_type('lwuptc'                          , 'real'      , 1), &
-       var_info_type('refl10cm'                        , 'real'      , 2), &
-       var_info_type('rainncv'                         , 'real'      , 1), &
-       var_info_type('raincv'                          , 'real'      , 1), &
-       var_info_type('snowncv'                         , 'real'      , 1), &
-       var_info_type('graupelncv'                      , 'real'      , 1), &
-       var_info_type('rainnc'                          , 'real'      , 1), &
-       var_info_type('rainc'                           , 'real'      , 1), &
-       var_info_type('frainnc'                         , 'real'      , 1), &
-       var_info_type('snownc'                          , 'real'      , 1), &
-       var_info_type('graupelnc'                       , 'real'      , 1), &
-       var_info_type('re_cloud'                        , 'real'      , 2), &
-       var_info_type('re_ice'                          , 'real'      , 2), &
-       var_info_type('re_snow'                         , 'real'      , 2), &
-       var_info_type('sfc_emibck'                      , 'real'      , 1), &
-       var_info_type('mavail'                          , 'real'      , 1), &
-       var_info_type('sfc_albedo'                      , 'real'      , 1), &
-       var_info_type('sfc_emiss'                       , 'real'      , 1), &
-       var_info_type('thc'                             , 'real'      , 1), &
-       var_info_type('ust'                             , 'real'      , 1), &
-       var_info_type('xicem'                           , 'real'      , 1), &
-       var_info_type('z0'                              , 'real'      , 1), &
-       var_info_type('znt'                             , 'real'      , 1)  &
+       var_info_type('swdnb'                           , 'real'      , 1), & !RAD
+       var_info_type('swdnbc'                          , 'real'      , 1), & !RAD
+       var_info_type('swdnt'                           , 'real'      , 1), & !RAD
+       var_info_type('swdntc'                          , 'real'      , 1), & !RAD
+       var_info_type('swupb'                           , 'real'      , 1), & !RAD
+       var_info_type('swupbc'                          , 'real'      , 1), & !RAD
+       var_info_type('swupt'                           , 'real'      , 1), & !RAD
+       var_info_type('swuptc'                          , 'real'      , 1), & !RAD
+       var_info_type('lwdnb'                           , 'real'      , 1), & !RAD
+       var_info_type('lwdnbc'                          , 'real'      , 1), & !RAD
+       var_info_type('lwdnt'                           , 'real'      , 1), & !RAD
+       var_info_type('lwdntc'                          , 'real'      , 1), & !RAD
+       var_info_type('lwupb'                           , 'real'      , 1), & !RAD
+       var_info_type('lwupbc'                          , 'real'      , 1), & !RAD
+       var_info_type('lwupt'                           , 'real'      , 1), & !RAD
+       var_info_type('lwuptc'                          , 'real'      , 1), & !RAD
+       var_info_type('refl10cm'                        , 'real'      , 2), & !MP
+       var_info_type('rainncv'                         , 'real'      , 1), & !MP
+       var_info_type('raincv'                          , 'real'      , 1), & !MP
+       var_info_type('snowncv'                         , 'real'      , 1), & !MP
+       var_info_type('graupelncv'                      , 'real'      , 1), & !MP
+       var_info_type('rainnc'                          , 'real'      , 1), & !MP
+       var_info_type('rainc'                           , 'real'      , 1), & !MP
+       var_info_type('frainnc'                         , 'real'      , 1), & !MP
+       var_info_type('snownc'                          , 'real'      , 1), & !MP
+       var_info_type('graupelnc'                       , 'real'      , 1), & !MP
+       var_info_type('re_cloud'                        , 'real'      , 2), & !MP
+       var_info_type('re_ice'                          , 'real'      , 2), & !MP
+       var_info_type('re_snow'                         , 'real'      , 2), & !MP
+       var_info_type('sfc_emibck'                      , 'real'      , 1), & !SFC
+       var_info_type('mavail'                          , 'real'      , 1), & !SFC
+       var_info_type('sfc_albedo'                      , 'real'      , 1), & !SFC/RAD
+       var_info_type('sfc_emiss'                       , 'real'      , 1), & !SFC/RAD
+       var_info_type('thc'                             , 'real'      , 1), & !SFC
+       var_info_type('ust'                             , 'real'      , 1), & !SFC
+       var_info_type('xicem'                           , 'real'      , 1), & !SFC
+       var_info_type('z0'                              , 'real'      , 1), & !SFC
+       var_info_type('znt'                             , 'real'      , 1), & !SFC
+       var_info_type('dusfcg'                          , 'real'      , 1), & !GWD
+       var_info_type('dvsfcg'                          , 'real'      , 1), & !GWD
+       var_info_type('dusfc_ls'                        , 'real'      , 1), & !GWD
+       var_info_type('dvsfc_ls'                        , 'real'      , 1), & !GWD
+       var_info_type('dusfc_bl'                        , 'real'      , 1), & !GWD
+       var_info_type('dvsfc_bl'                        , 'real'      , 1), & !GWD
+       var_info_type('dusfc_ss'                        , 'real'      , 1), & !GWD
+       var_info_type('dvsfc_ss'                        , 'real'      , 1), & !GWD
+       var_info_type('dusfc_fd'                        , 'real'      , 1), & !GWD
+       var_info_type('dvsfc_fd'                        , 'real'      , 1), & !GWD
+       var_info_type('dtaux3d'                         , 'real'      , 2), & !GWD
+       var_info_type('dtauy3d'                         , 'real'      , 2), & !GWD
+       var_info_type('dtaux3d_ls'                      , 'real'      , 2), & !GWD
+       var_info_type('dtauy3d_ls'                      , 'real'      , 2), & !GWD
+       var_info_type('dtauy3d_bl'                      , 'real'      , 2), & !GWD
+       var_info_type('dtaux3d_bl'                      , 'real'      , 2), & !GWD
+       var_info_type('dtaux3d_ss'                      , 'real'      , 2), & !GWD
+       var_info_type('dtauy3d_ss'                      , 'real'      , 2), & !GWD
+       var_info_type('dtaux3d_fd'                      , 'real'      , 2), & !GWD
+       var_info_type('dtauy3d_fd'                      , 'real'      , 2)  & !GWD
        ]
 
   !> #########################################################################################
@@ -363,6 +383,8 @@ module ufs_mpas_io
 
 contains
 
+  !> DJS: ToDo. Combine the PIO open routines below.
+  
   !> #########################################################################################
   !> Procedure to open MPAS IC file.
   !>
