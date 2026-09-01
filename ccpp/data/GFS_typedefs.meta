@@ -11086,6 +11086,20 @@
   type = real
   kind = kind_phys
   active = (flag_for_unified_gravity_wave_physics_diagnostics)
+[dusfcg]
+  standard_name = instantaneous_x_stress_due_to_gravity_wave_drag
+  long_name = zonal surface stress due to orographic gravity wave drag
+  units = Pa
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
+[dvsfcg]
+  standard_name = instantaneous_y_stress_due_to_gravity_wave_drag
+  long_name = meridional surface stress due to orographic gravity wave drag
+  units = Pa
+  dimensions = (horizontal_dimension)
+  type = real
+  kind = kind_phys
 [thompson_ext_diag3d]
   standard_name = extended_diagnostics_output_from_thompson_microphysics
   long_name = set of 3d arrays for extended diagnostics output from thompson microphysics

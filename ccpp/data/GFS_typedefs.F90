@@ -2224,6 +2224,8 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: dv3_osscol(:)  => null()  !< time-averaged sfc v-momentum flux from SSGWD
     real (kind=kind_phys), pointer :: du3_ofdcol(:)  => null()  !< time-averaged sfc u-momentum flux from TOFD
     real (kind=kind_phys), pointer :: dv3_ofdcol(:)  => null()  !< time-averaged sfc v-momentum flux from TOFD
+    real (kind=kind_phys), pointer :: dusfcg(:)      => null()  !< instantaneous sfc u-momentum flux from GWD
+    real (kind=kind_phys), pointer :: dvsfcg(:)      => null()  !< instantaneous sfc v-momentum flux from GWD
 !
 !---vay-2018 UGWP-diagnostics daily mean
 !
@@ -8425,6 +8427,8 @@ module GFS_typedefs
       allocate (Diag%du3_ofdcol (IM)          )
       allocate (Diag%dv3_ofdcol (IM)          )
     endif
+    allocate (Diag%dusfcg (IM)                )
+    allocate (Diag%dvsfcg (IM)                )
 
     !--- 3D diagnostics for Thompson MP / GFDL MP
     allocate (Diag%refl_10cm(IM,Model%levs))
@@ -8789,6 +8793,8 @@ module GFS_typedefs
       Diag%du3_ofdcol  = zero
       Diag%dv3_ofdcol  = zero
     end if
+    Diag%dusfcg      = zero
+    Diag%dvsfcg      = zero
 
     if (Model%ldiag_ugwp) then
       Diag%du3dt_ogw   = zero

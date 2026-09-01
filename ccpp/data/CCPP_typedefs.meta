@@ -526,13 +526,6 @@
   dimensions = (horizontal_dimension,vertical_layer_dimension)
   type = real
   kind = kind_phys
-[dusfcg]
-  standard_name = instantaneous_x_stress_due_to_gravity_wave_drag
-  long_name = zonal surface stress due to orographic gravity wave drag
-  units = Pa
-  dimensions = (horizontal_dimension)
-  type = real
-  kind = kind_phys
 [dusfc1]
   standard_name = instantaneous_surface_x_momentum_flux
   long_name = x momentum flux
@@ -559,13 +552,6 @@
   long_name = tendency of the tracers due to vertical diffusion in PBL scheme
   units = kg kg-1 s-1
   dimensions = (horizontal_dimension,vertical_layer_dimension,number_of_vertical_diffusion_tracers)
-  type = real
-  kind = kind_phys
-[dvsfcg]
-  standard_name = instantaneous_y_stress_due_to_gravity_wave_drag
-  long_name = meridional surface stress due to orographic gravity wave drag
-  units = Pa
-  dimensions = (horizontal_dimension)
   type = real
   kind = kind_phys
 [dvsfc1]
