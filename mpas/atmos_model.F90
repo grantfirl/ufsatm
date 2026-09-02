@@ -286,7 +286,7 @@ contains
     !
     call ufs_mpas_grid_to_physics(UFSATM_grid)
     call ufs_mpas_sfc_to_physics(UFSATM_sfcprop, UFSatm_control)
-    call ufs_mpas_gwd_to_physics(UFSATM_control, UFSATM_sfcprop)
+    !call ufs_mpas_gwd_to_physics(UFSATM_control, UFSATM_sfcprop)
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
     ! Register CCPP
@@ -450,6 +450,8 @@ contains
   
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_microphysics_to_mpas(UFSATM_stateout)
+    
+    UFSATM_control % first_time_step = .false.
 
   end subroutine atmos_model_microphysics
 

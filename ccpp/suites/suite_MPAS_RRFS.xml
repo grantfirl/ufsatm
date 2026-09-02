@@ -31,8 +31,8 @@
     <subcycle loop="1">
       <scheme>GFS_photochemistry</scheme>
       <scheme>GFS_photochemistry_post</scheme>
-      <scheme>drag_suite</scheme>
-      <scheme>GFS_GWD_generic_post</scheme>
+      <!--<scheme>drag_suite</scheme>-->
+      <!--<scheme>GFS_GWD_generic_post</scheme>-->
     </subcycle>
   </group>
   <group name="microphysics">
