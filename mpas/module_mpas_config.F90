@@ -88,6 +88,8 @@ module module_mpas_config
   !>
   character(len=256) :: mpas_landuse_file = "LANDUSE.TBL"
   integer :: mpas_land_funit
+  character(len=256) :: mpas_genparm_file = "GENPARM.TBL"
+  integer :: mpas_gprm_funit
 
   !> PIO
   type(iosystem_desc_t), pointer :: pio_subsystem_ic
