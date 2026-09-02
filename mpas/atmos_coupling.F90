@@ -896,7 +896,7 @@ contains
     call mpas_pool_get_array(sfc_input, 'greenfrac', greenfrac) !dim (nMonths nCells); monthly-mean climatological greenness fraction (percent)
     call mpas_pool_get_array(sfc_input, 'albedo12m', albedo12m) !dim (nMonhts nCells); monthly-mean climatological surface albedo (percent)
     
-    call mpas_pool_get_array(sfc_input, 'canwat',    canwat) !dim (nCells); water in canopy (kg m^-2)
+    !call mpas_pool_get_array(sfc_input, 'canwat',    canwat) !dim (nCells); water in canopy (kg m^-2)
     
     call mpas_pool_get_array(diag_phys, 'znt',       znt) !dim (nCells); roughness length (m)
     call mpas_pool_get_array(diag_phys, 'sfc_albedo',sfc_albedo ) !dim (nCells); surface albedo (fraction)
@@ -936,9 +936,9 @@ contains
     do ithread = 1,nThreads
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         if (landmask(iCol) == 1) then
-          physics_sfcprop % slmsk(iCol) == 1.0_RKIND
+          physics_sfcprop % slmsk(iCol) = 1.0_RKIND
         elseif (seaice(iCol) > 0.0_RKIND) then
-          physics_sfcprop % slmsk(iCol) == 2.0_RKIND
+          physics_sfcprop % slmsk(iCol) = 2.0_RKIND
         endif
         physics_sfcprop % tsfco(iCol) = sst(iCol)
         physics_sfcprop % weasd(iCol) = snow(iCol)  !weasd is in mm, snow is in kg m-2; after dividing by density of water and converting to mm, these are equivalent
@@ -952,7 +952,7 @@ contains
         physics_sfcprop % facsf(iCol) = 0.5!? - from gcycle?
         physics_sfcprop % facwf(iCol) = 0.5!? - from gcycle?
         physics_sfcprop % vfrac(iCol) = vegfra(iCol)*0.01_RKIND !conversion to decimal from percent
-        physics_sfcprop % canopy(iCol)= canwat(iCol) !not in sfc_input stream?
+        !physics_sfcprop % canopy(iCol)= canwat(iCol) !not in sfc_input stream?
         !physics_sfcprop % f10m(iCol)  = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
         !physics_sfcprop % t2m(iCol)   = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
         !physics_sfcprop % q2m(iCol)   = 0.0_RKIND !no input in ICs; intent(out) in sfc_diag.F
@@ -996,8 +996,6 @@ contains
       end do
     end do
     
-    STOP
-
   end subroutine ufs_mpas_sfc_to_physics
 
   !> #########################################################################################
