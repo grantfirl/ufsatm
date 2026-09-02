@@ -28,6 +28,9 @@
       <scheme>dcyc2t3</scheme>
     </subcycle>
     <!-- Surface iteration loop -->
+    <subcycle loop="2">
+      <scheme>module_sf_mynnsfc_driver</scheme>
+    </subcycle>
     <subcycle loop="1">
       <scheme>GFS_photochemistry</scheme>
       <scheme>GFS_photochemistry_post</scheme>
