@@ -153,6 +153,8 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: phil  (:,:) => null()   !< layer geopotential height
     real (kind=kind_phys), pointer :: prsl  (:,:) => null()   !< model layer mean pressure Pa
     real (kind=kind_phys), pointer :: prslk (:,:) => null()   !< exner function = (p/p0)**rocp
+    real (kind=kind_phys), pointer :: dp    (:,:) => null()   !< model layer thickness (Pa)
+    real (kind=kind_phys), pointer :: dpc   (:,:) => null()   !< air pressure difference between midlayers (Pa)
 
 !--- layer and level heights
     real (kind=kind_phys), pointer :: zgrid (:,:) => null()   !< layer height (m)
@@ -2222,6 +2224,8 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: dv3_osscol(:)  => null()  !< time-averaged sfc v-momentum flux from SSGWD
     real (kind=kind_phys), pointer :: du3_ofdcol(:)  => null()  !< time-averaged sfc u-momentum flux from TOFD
     real (kind=kind_phys), pointer :: dv3_ofdcol(:)  => null()  !< time-averaged sfc v-momentum flux from TOFD
+    real (kind=kind_phys), pointer :: dusfcg(:)      => null()  !< instantaneous sfc u-momentum flux from GWD
+    real (kind=kind_phys), pointer :: dvsfcg(:)      => null()  !< instantaneous sfc v-momentum flux from GWD
 !
 !---vay-2018 UGWP-diagnostics daily mean
 !
@@ -2364,10 +2368,14 @@ module GFS_typedefs
     allocate (Statein%phil  (IM,Model%levs))
     allocate (Statein%prsl  (IM,Model%levs))
     allocate (Statein%prslk (IM,Model%levs))
+    allocate (Statein%dp    (IM,Model%levs))
+    allocate (Statein%dpc   (IM,Model%levs))
 
     Statein%phil  = clear_val
     Statein%prsl  = clear_val
     Statein%prslk = clear_val
+    Statein%dp    = clear_val
+    Statein%dpc   = clear_val
 
     !--- layer and level heights
     allocate (Statein%zgrid  (IM,Model%levs))
@@ -8419,6 +8427,8 @@ module GFS_typedefs
       allocate (Diag%du3_ofdcol (IM)          )
       allocate (Diag%dv3_ofdcol (IM)          )
     endif
+    allocate (Diag%dusfcg (IM)                )
+    allocate (Diag%dvsfcg (IM)                )
 
     !--- 3D diagnostics for Thompson MP / GFDL MP
     allocate (Diag%refl_10cm(IM,Model%levs))
@@ -8783,6 +8793,8 @@ module GFS_typedefs
       Diag%du3_ofdcol  = zero
       Diag%dv3_ofdcol  = zero
     end if
+    Diag%dusfcg      = zero
+    Diag%dvsfcg      = zero
 
     if (Model%ldiag_ugwp) then
       Diag%du3dt_ogw   = zero
