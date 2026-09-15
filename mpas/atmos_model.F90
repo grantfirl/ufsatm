@@ -9,6 +9,7 @@ module atmos_model_mod
   use mpi_f08
   ! MPAS
   use MPAS_typedefs,         only : MPAS_kind_phys => kind_phys
+  use mpas_kind_types,       only : RKIND
   use ufs_mpas_constituents, only : constituent_name, is_water_species, constituent_type
   ! CCPP
   use CCPP_data,             only : UFSATM_control      => GFS_control
@@ -28,7 +29,7 @@ module atmos_model_mod
   use mpas_log,              only : mpas_log_write
   use mpas_derived_types,    only : MPAS_LOG_CRIT
   ! UFSATM
-  use module_mpas_config,    only : ic_filename, lbc_filename, oro_filename, nCellsSolve
+  use module_mpas_config,    only : ic_filename, lbc_filename, oro_filename, nCellsSolve, nCellsGlobal
   use module_mpas_config,    only : stream_list_history, stream_list_restart, stream_list_diag
   use module_mpas_config,    only : lonCell, latCell, areaCellGlobal
   use module_mpas_config,    only : mpas_errfile_funit, mpas_errfilename
@@ -61,17 +62,17 @@ module atmos_model_mod
   !>
   !> #########################################################################################
   type atmos_control_type
-     logical          :: isAtCapTime ! true if currTime is at the cap driverClock's currTime 
+     logical          :: isAtCapTime ! true if currTime is at the cap driverClock's currTime
      integer          :: nblks      ! Number of physics blocks.
      type(ESMF_Time)  :: CurrTime, StartTime, StopTime
      type(ESMF_TimeInterval) :: timeStep
   end type atmos_control_type
-  
+
   ! Index map between MPAS tracers and UFS constituents
   integer, dimension(:), pointer :: mpas_from_ufs_cnst => null() ! indices into UFS constituent array
   ! Index map between UFS tracers and MPAS constituents
-  integer, dimension(:), pointer :: ufs_from_mpas_cnst => null() ! indices into MPAS tracers array  
-  
+  integer, dimension(:), pointer :: ufs_from_mpas_cnst => null() ! indices into MPAS tracers array
+
   ! Namelist
   integer :: blocksize        = 1
   logical :: dycore_only      = .false.
@@ -107,6 +108,7 @@ contains
     use ufs_mpas_io,            only : use_mpas_slopedata_read
     use atmos_coupling_mod,     only : ufs_mpas_to_physics, ufs_mpas_grid_to_physics, ufs_mpas_sfc_to_physics
     use atmos_coupling_mod,     only : ufs_mpas_landuse_update, ufs_mpas_gwd_to_physics
+    use atmos_coupling_mod,     only : ufs_mpas_reference_pressure
     use MPAS_init,              only : MPAS_initialize
 
     ! Arguments
@@ -118,6 +120,13 @@ contains
     ! Locals
     integer :: i, io, ierr, sec, iCol, mpi_size, mpi_rank, rc, dt_dyn, dt_phys
     integer :: times(6), timee(6), ttime, logUnits(2), nthrds, me, master, nlevs
+    ! Horizontal-resolution proxy (lonr/latr) and reference vertical pressure profile
+    ! (ak/bk) for UGWPv1 under MPAS; see the block below and MPAS_init.F90. ak/bk are built
+    ! in MPAS's own RKIND (matching ufs_mpas_reference_pressure) and converted to CCPP's
+    ! kind_phys only at the MPAS_initialize() call, matching how MPAS_init.F90 used to
+    ! convert Init_parm%ak/%bk before the Cfg-based plumbing was refactored away.
+    integer :: lonr, latr
+    real(RKIND), allocatable :: ak(:), bk(:)
     logical :: file_exists
     real(MPAS_kind_phys) :: start_time, stop_time
     integer              :: nConstituents   !< Number of constituents (tracers).
@@ -150,9 +159,9 @@ contains
     Atmos % StartTime = StartTime
     Atmos % CurrTime  = CurrTime
     Atmos % StopTime  = StopTime
-  
+
     dt_phys = real(dt_atmos)
-    
+
     ! Get forecast start/stop times (year/month/day/hour/minute/second)
     call ESMF_TimeIntervalGet(StopTime-StartTime, s=ttime, rc=rc)
     call ESMF_TimeGet (StartTime, YY=times(1),MM=times(2),DD=times(3),H=times(4),M=times(5),S=times(6),rc=rc)
@@ -160,7 +169,7 @@ contains
 
     ! Set forecast time interval
     call ESMF_TimeIntervalSet(Atmos % timeStep, s=dt_atmos, rc=rc)
-    
+
     !
     ! Read in ATMosphere namelist (master processor only)
     !
@@ -255,7 +264,7 @@ contains
 #else
     nthrds = 1
 #endif
-    
+
     ! Number of physics blocks
     Atmos % nblks = nCellsSolve / blocksize
     if (mod(nCellsSolve, blocksize) .gt. 0) Atmos % nblks = Atmos % nblks + 1
@@ -267,18 +276,36 @@ contains
     blksz(Atmos % nblks) = nCellsSolve - (Atmos % nblks - 1)*blocksize
 
     allocate(UFSATM_interstitial(nthrds+1))
-    
+
     ! Update time (UFS specific time formatting array)
     bdat(:) = 0
     call ESMF_TimeGet (StartTime, YY=bdat(1),MM=bdat(2),DD=bdat(3),H=bdat(5),M=bdat(6),S=bdat(7),rc=rc)
     cdat(:) = 0
     call ESMF_TimeGet (CurrTime,  YY=cdat(1),MM=cdat(2),DD=cdat(3),H=cdat(5),M=cdat(6),S=cdat(7),rc=rc)
 
+    ! Reference vertical pressure profile for UGWPv1. Must be built before
+    ! MPAS_initialize(), which is where control_initialize() consumes ak/bk.
+    ! Safe here: the MPAS dycore init above (ufs_mpas_init) has already populated the base
+    ! state and set nlevs.
+    allocate(ak(nlevs + 1))
+    allocate(bk(nlevs + 1))
+    call ufs_mpas_reference_pressure(nlevs, ak, bk)
+
+    ! Horizontal-resolution proxy for the GFS physics (lonr/latr = Gaussian-grid points
+    ! around the equator / pole to pole). For a quasi-uniform mesh the number of cells
+    ! around the equator is sqrt(pi*N): 359 for x1.40962 (120 km). Undefined for
+    ! variable-resolution meshes. Consumed by control_initialize via gnx/gny.
+    lonr = nint(sqrt(pi * real(nCellsGlobal, kind=MPAS_kind_phys)))
+    latr = lonr / 2
+    if (me == master) call mpas_log_write('UGWP resolution proxy: lonr = $i, latr = $i from $i global cells', &
+                                          intArgs=(/lonr, latr, nCellsGlobal/))
+
     ! Read in physics namelist and allocate data containers.
     call MPAS_initialize(UFSATM_control, UFSATM_intdiag, UFSATM_grid, UFSATM_tbd, UFSATM_sfcprop, &
          UFSATM_statein, UFSATM_stateout, UFSATM_cldprop, UFSATM_radtend, UFSATM_coupling,        &
          me, master, mpicomm, nlevs, dt_dyn, dt_phys, nml_funit, nml_filename, bdat, cdat, nwat,  &
-         fcst_ntasks, blksz, input_nml_file, constituent_name, constituent_type, restart)
+         fcst_ntasks, blksz, input_nml_file, constituent_name, constituent_type, restart,         &
+         gnx=lonr, gny=latr, ak=real(ak, MPAS_kind_phys), bk=real(bk, MPAS_kind_phys))
 
     !> Read and initialize landuse fields needed by surface physics.
     call ufs_mpas_landuse_read(mpicomm, me, master)
@@ -312,7 +339,7 @@ contains
 
     ! Initialize three-dimensional physics.
     ! NOT YET IMPLEMENTED
-    
+
     stop_time = MPI_Wtime()
     atmiClock = atmiClock + (stop_time - start_time)
     !
@@ -373,7 +400,7 @@ contains
        call ufs_mpas_landuse_update(doy)
        doyc = doy
     endif
-    
+
     ! Populate physics inputs with MPAS data.
     call ufs_mpas_to_physics(UFSATM_statein, UFSATM_sfcprop, UFSATM_radtend)
 
@@ -405,7 +432,7 @@ contains
 
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_physics_to_mpas(UFSATM_stateout)
- 
+
   end subroutine atmos_model_radiation_physics
 
   !> #########################################################################################
@@ -414,13 +441,13 @@ contains
   !> #########################################################################################
   subroutine atmos_model_dynamics(Atmos)
     use ufs_mpas_subdriver, only : ufs_mpas_run
-    
+
     type (atmos_control_type), intent(inout) :: Atmos
     real(MPAS_kind_phys) :: start_time, stop_time
-    
+
     ! Call MPAS dycore
     call ufs_mpas_run(mpasClock, outClock, debug, phys_diag)
-    
+
   end subroutine atmos_model_dynamics
 
   !> #########################################################################################
@@ -434,7 +461,7 @@ contains
     integer :: ierr
     character(len=*), parameter :: subname = 'atmos_model::atmos_model_microphysics'
     real(MPAS_kind_phys) :: start_time, stop_time
- 
+
     ! Prepare CCPP microphysics inputs with MPAS dycore outputs.
     call ufs_mpas_to_microphysics(UFSATM_stateout, UFSATM_statein)
 
@@ -452,10 +479,10 @@ contains
     if (ierr/=0) call mpas_log_write(subname // " ERROR: Call to CCPP timestep_final step failed",messageType=MPAS_LOG_CRIT)
     stop_time = MPI_Wtime()
     setupClock = setupClock + (stop_time - start_time)
-  
+
     ! Prepare MPAS dycore inputs with CCPP physics outputs.
     call ufs_microphysics_to_mpas(UFSATM_stateout)
-    
+
     UFSATM_control % first_time_step = .false.
 
   end subroutine atmos_model_microphysics

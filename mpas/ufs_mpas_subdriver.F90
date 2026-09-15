@@ -547,7 +547,12 @@ contains
     type(mpas_timeinterval_type) :: mpas_time_interval, mpas_output_interval, mpas_restart_interval
     real (kind=RKIND), dimension(:,:,:), pointer :: scalars
     real (kind=RKIND) :: start_time, stop_time
-    
+    integer, save :: ncall_dyn = 0
+    integer :: diag_unit
+    character(len=32) :: diag_fname
+    real (kind=RKIND), dimension(:,:), pointer :: chk_u, chk_th, chk_rho
+    integer, pointer :: chk_nCells, chk_nCellsSolve, chk_nEdges, chk_nEdgesSolve
+
     ! Start dynamics timer
     start_time = MPI_Wtime()
 
@@ -559,12 +564,12 @@ contains
     ! Grab runtime configuration
     call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_dt',         config_dt)
     call mpas_pool_get_config( domain_ptr % blocklist % configs, 'config_apply_lbcs', config_apply_lbcs)
-    
+
     ! Set up clock
     timeNow  = mpas_get_clock_time(clock, mpas_NOW, ierr=ierr)
     if (ierr /= 0) then
        call mpas_log_write(subname // ' Failed to get clock_time for "mpas_NOW"',messageType=MPAS_LOG_CRIT)
-       
+
     endif
 
     call mpas_get_time(curr_time=timeNow, dateTimeString=timeStamp, ierr=ierr)
@@ -577,7 +582,7 @@ contains
     if (ierr /= 0) then
        call mpas_log_write(subname // ' Failed to set dynamics time step',messageType=MPAS_LOG_CRIT)
     endif
-    
+
     !
     ! Read initial boundary state
     ! During integration, time level 1 stores the boundary tendencies (next-current) file records,
@@ -631,6 +636,36 @@ contains
        call mpas_dmpar_get_time(integ_stop_time)
        call mpas_timer_stop('time integration')
        call mpas_log_write(' Timing for integration step: $r s', realArgs=(/real(integ_stop_time - integ_start_time, kind=RKIND)/))
+
+       ! Temporary diagnostics (first few steps, per rank, stderr): NaN count and
+       ! range of the new state, split into owned and halo edges/cells, to locate
+       ! where a bad value first appears. Remove once the momentum path is validated.
+       ncall_dyn = ncall_dyn + 1
+       if (ncall_dyn <= 3) then
+          call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)
+          call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh)
+          call mpas_pool_get_array(state, 'u',       chk_u,  2)
+          call mpas_pool_get_array(state, 'theta_m', chk_th, 2)
+          call mpas_pool_get_array(state, 'rho_zz',  chk_rho, 2)
+          call mpas_pool_get_dimension(mesh, 'nCells',      chk_nCells)
+          call mpas_pool_get_dimension(mesh, 'nCellsSolve', chk_nCellsSolve)
+          call mpas_pool_get_dimension(mesh, 'nEdges',      chk_nEdges)
+          call mpas_pool_get_dimension(mesh, 'nEdgesSolve', chk_nEdgesSolve)
+          write(diag_fname,'(a,i4.4)') 'bridge_diag.rank', domain_ptr % dminfo % my_proc_id
+          open(newunit=diag_unit, file=trim(diag_fname), position='append', action='write')
+          write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0,a,i0)') 'dyn step ', ncall_dyn, ' rank ', domain_ptr % dminfo % my_proc_id, &
+               ' u owned min/max ', minval(chk_u(:,1:chk_nEdgesSolve)), maxval(chk_u(:,1:chk_nEdgesSolve)), &
+               ' nan ', count(chk_u(:,1:chk_nEdgesSolve) /= chk_u(:,1:chk_nEdgesSolve)), &
+               ' nan halo ', count(chk_u(:,chk_nEdgesSolve+1:chk_nEdges) /= chk_u(:,chk_nEdgesSolve+1:chk_nEdges))
+          write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0,a,i0)') 'dyn step ', ncall_dyn, ' rank ', domain_ptr % dminfo % my_proc_id, &
+               ' theta_m owned min/max ', minval(chk_th(:,1:chk_nCellsSolve)), maxval(chk_th(:,1:chk_nCellsSolve)), &
+               ' nan ', count(chk_th(:,1:chk_nCellsSolve) /= chk_th(:,1:chk_nCellsSolve)), &
+               ' nan halo ', count(chk_th(:,chk_nCellsSolve+1:chk_nCells) /= chk_th(:,chk_nCellsSolve+1:chk_nCells))
+          write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0)') 'dyn step ', ncall_dyn, ' rank ', domain_ptr % dminfo % my_proc_id, &
+               ' rho_zz owned min/max ', minval(chk_rho(:,1:chk_nCellsSolve)), maxval(chk_rho(:,1:chk_nCellsSolve)), &
+               ' nan ', count(chk_rho(:,1:chk_nCellsSolve) /= chk_rho(:,1:chk_nCellsSolve))
+          close(diag_unit)
+       end if
 
        ! Move time level 2 fields back into time level 1 for next time step
        call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'state', state)

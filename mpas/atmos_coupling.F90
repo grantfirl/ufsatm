@@ -7,7 +7,7 @@ module atmos_coupling_mod
   use mpas_kind_types, only : strKIND, RKIND
   use ufs_mpas_io,     only : domain_ptr,dyn_mpas_exchange_halo
   use ufs_mpas_io,     only : lucats,lumatch,luseas,lutype,li,albd,slmo,sfem,sfz0,therin,scfx,sfhc
-  
+
   implicit none
 
   public :: ufs_physics_to_mpas
@@ -18,7 +18,8 @@ module atmos_coupling_mod
   public :: ufs_mpas_sfc_to_physics
   public :: ufs_mpas_landuse_update
   public :: ufs_mpas_gwd_to_physics
-  
+  public :: ufs_mpas_reference_pressure
+
 contains
   !> #########################################################################################
   !> Procedure to populate CCPP data containers with MPAS pool data.
@@ -88,12 +89,12 @@ contains
     call mpas_pool_get_array(diag_pool,  'surface_pressure',       surface_pressure)
     call mpas_pool_get_array(diag_phys,  'sfc_albedo',             sfc_albedo)
     call mpas_pool_get_array(diag_phys,  'sfc_emiss' ,             sfc_emiss)
- 
+
     ! Local variables
     allocate(prsl(nCellsSolve, nVertLevels))
     allocate(prsi(nCellsSolve, nVertLevels + 1))
     allocate(rho( nCellsSolve, nVertLevels))
-    
+
     ! Copy fields from MPAS data containers to physics data containers.
     ! [k, i] -> [i, k]
     ! Retain bottom-up convention
@@ -118,12 +119,16 @@ contains
              physics_state % ugrs(iCol,iLay)   = ux(iLay,iCol)
              physics_state % vgrs(iCol,iLay)   = uy(iLay,iCol)
 
-             ! Layer geopotential and height.
-             physics_state % phil(iCol,iLay)   = 0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol))*gravity !(m -> m2/s2)
+             ! Layer geopotential and height. CCPP geopotential is relative to the
+             ! model surface (FV3: get_phi_fv3 sets phii(:,1) = 0), so subtract the
+             ! terrain height zgrid(1,:). Schemes use phil/g as height above ground
+             ! (e.g. drag_suite TOFD: zl**(-1.2) -> NaN where the absolute height
+             ! is <= 0, i.e. land below sea level).
+             physics_state % phil(iCol,iLay)   = (0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol)) - zgrid(1,iCol))*gravity !(m -> m2/s2)
              physics_state % zgrid(iCol,iLay)  = 0.5*(zgrid(iLay+1,iCol)+zgrid(iLay,iCol))
 
-             ! Level geopotential and height.
-             physics_state % phii(iCol,iLay)   = zgrid(iLay,iCol)*gravity !(m -> m2/s2)
+             ! Level geopotential (surface-relative) and height.
+             physics_state % phii(iCol,iLay)   = (zgrid(iLay,iCol) - zgrid(1,iCol))*gravity !(m -> m2/s2)
              physics_state % zigrid(iCol,iLay) = zgrid(iLay,iCol)
 
              ! Layer thickness.
@@ -139,7 +144,7 @@ contains
              prsl(iCol,iLay) = pressure_p(iLay,iCol) + pressure_b(iLay,iCol)
           end do
           do iLay = nVertLevels,nVertLevels+1
-             physics_state % phii(iCol,iLay)     = zgrid(iLay,iCol)*gravity !(m -> m2/s2)
+             physics_state % phii(iCol,iLay)     = (zgrid(iLay,iCol) - zgrid(1,iCol))*gravity !(m -> m2/s2)
              physics_state % zigrid(iCol,iLay)   = zgrid(iLay,iCol)
              physics_state % dzgrid(iCol,iLay-1) = zgrid(iLay,iCol) - zgrid(iLay-1,iCol)
           end do
@@ -287,7 +292,7 @@ contains
     real(kind=RKIND), pointer :: mass(:,:), mass_edge(:,:), exner(:,:), theta_m(:,:), zgrid(:,:), zz(:,:)
     real(kind=RKIND), pointer :: pressure_b(:,:), pressure_p(:,:), tend_th_phys(:,:)
     real(kind=RKIND), pointer :: tend_theta_phys(:,:), tend_theta_dyn(:,:)
-    real(kind=RKIND), pointer :: tend_u_phys(:,:), tend_ru_dyn(:,:)
+    real(kind=RKIND), pointer :: tend_u_phys(:,:), tend_ru_phys(:,:)
     real(kind=RKIND), pointer :: tend_uzonal(:,:), tend_umerid(:,:)
     real(kind=RKIND), pointer :: scalars(:,:,:), tend_scalars_phys(:,:,:), tend_scalars_dyn(:,:,:)
     real(kind=RKIND), pointer :: surface_pressure(:)
@@ -306,6 +311,11 @@ contains
     integer :: iCol,iLay,ithread,iScalar
     real(kind=RKIND):: coeff, tem1, tem2, rho1, rho2
     logical :: debug=.false.
+    integer, save :: ncall_p2m = 0
+    integer :: diag_unit, nbad
+    character(len=32) :: diag_fname
+    type(mpas_pool_type), pointer :: dbg_diag
+    real(kind=RKIND), pointer :: dbg_lat(:), dbg_lon(:), dbg_gw(:,:), dbg_ls(:,:), dbg_bl(:,:), dbg_ss(:,:), dbg_fd(:,:)
     character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_physics_to_mpas'
 
     ! Get openMP information
@@ -371,7 +381,7 @@ contains
     ! Specific humidity
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-        do iLay = 1,nVertLevels 
+        do iLay = 1,nVertLevels
            tend_scalars_phys(index_qv,iLay,iCol) = tend_scalars_phys(index_qv,iLay,iCol) + &
                 physics_state % dqdt(iCol,iLay,index_qv)*mass(iLay,iCol)
         end do
@@ -382,7 +392,7 @@ contains
     if(associated(index_qc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_qc,iLay,iCol) = tend_scalars_phys(index_qc,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_qc)*mass(iLay,iCol)
           end do
@@ -394,7 +404,7 @@ contains
     if(associated(index_qi)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_qi,iLay,iCol) = tend_scalars_phys(index_qi,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_qi)*mass(iLay,iCol)
           end do
@@ -406,7 +416,7 @@ contains
     if(associated(index_qr)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_qr,iLay,iCol) = tend_scalars_phys(index_qr,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_qr)*mass(iLay,iCol)
           end do
@@ -418,7 +428,7 @@ contains
     if(associated(index_qs)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_qs,iLay,iCol) = tend_scalars_phys(index_qs,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_qs)*mass(iLay,iCol)
           end do
@@ -430,7 +440,7 @@ contains
     if(associated(index_qg)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_qg,iLay,iCol) = tend_scalars_phys(index_qg,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_qg)*mass(iLay,iCol)
           end do
@@ -442,7 +452,7 @@ contains
     if(associated(index_nc)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_nc,iLay,iCol) = tend_scalars_phys(index_nc,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_nc)*mass(iLay,iCol)
           end do
@@ -454,7 +464,7 @@ contains
     if(associated(index_ni)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_ni,iLay,iCol) = tend_scalars_phys(index_ni,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_ni)*mass(iLay,iCol)
           end do
@@ -466,7 +476,7 @@ contains
     if(associated(index_nifa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_nifa,iLay,iCol) = tend_scalars_phys(index_nifa,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_nifa)*mass(iLay,iCol)
           end do
@@ -478,7 +488,7 @@ contains
     if(associated(index_nwfa)) then
       do ithread=1,nThreads
         do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
-          do iLay = 1,nVertLevels 
+          do iLay = 1,nVertLevels
              tend_scalars_phys(index_nwfa,iLay,iCol) = tend_scalars_phys(index_nwfa,iLay,iCol) + &
                   physics_state % dqdt(iCol,iLay,index_nwfa)*mass(iLay,iCol)
           end do
@@ -555,13 +565,67 @@ contains
     ! Finally, compute wind tendency at grid-edges.
     call tend_toEdges(mesh_pool, tend_uzonal, tend_umerid, tend_u_phys)
 
-    ! Update MPAS tendency (ru)
-    call mpas_pool_get_array(tend_pool, 'u', tend_ru_dyn)
-    do iCol = 1,nEdgesSolve
+    ! Hand the mass-weighted edge-normal tendency to the dynamics through
+    ! tend_ru_physics, the field atm_compute_dyn_tend adds to tend_u at every RK
+    ! stage. (The generic tend%u is rebuilt from scratch each stage, so adding to
+    ! it has no effect.) UFS owns this field: it is assigned, not accumulated, once
+    ! per physics step, and persists between steps in the MPAS_UFS_DYCORE build.
+    call mpas_pool_get_array(tend_phys, 'tend_ru_physics', tend_ru_phys)
+    do iCol = 1,nEdges
        do iLay = 1, nVertLevels
-          tend_ru_dyn(iLay,iCol) = tend_ru_dyn(iLay,iCol) + tend_u_phys(iLay,iCol)*mass_edge(iLay,iCol)
+          tend_ru_phys(iLay,iCol) = tend_u_phys(iLay,iCol)*mass_edge(iLay,iCol)
        end do
     end do
+
+    ! Temporary diagnostics for the first few physics steps (per rank, to stderr):
+    ! range and NaN count of the physics wind tendency on owned cells, of the
+    ! halo cells filled by the exchange above, and of the edge tendency handed to
+    ! the dynamics. Remove once the momentum path is validated.
+    ncall_p2m = ncall_p2m + 1
+    if (ncall_p2m <= 3) then
+       write(diag_fname,'(a,i4.4)') 'bridge_diag.rank', domain_ptr % dminfo % my_proc_id
+       open(newunit=diag_unit, file=trim(diag_fname), position='append', action='write')
+       write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0)') 'p2m step ', ncall_p2m, ' rank ', domain_ptr % dminfo % my_proc_id, &
+            ' dudt owned  min/max ', minval(physics_state % dudt(1:nCellsSolve,:)), maxval(physics_state % dudt(1:nCellsSolve,:)), &
+            ' nan ', count(physics_state % dudt(1:nCellsSolve,:) /= physics_state % dudt(1:nCellsSolve,:))
+       write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0)') 'p2m step ', ncall_p2m, ' rank ', domain_ptr % dminfo % my_proc_id, &
+            ' dvdt owned  min/max ', minval(physics_state % dvdt(1:nCellsSolve,:)), maxval(physics_state % dvdt(1:nCellsSolve,:)), &
+            ' nan ', count(physics_state % dvdt(1:nCellsSolve,:) /= physics_state % dvdt(1:nCellsSolve,:))
+       if (nCells > nCellsSolve) then
+          write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0)') 'p2m step ', ncall_p2m, ' rank ', domain_ptr % dminfo % my_proc_id, &
+               ' uzonal halo min/max ', minval(tend_uzonal(:,nCellsSolve+1:nCells)), maxval(tend_uzonal(:,nCellsSolve+1:nCells)), &
+               ' nan ', count(tend_uzonal(:,nCellsSolve+1:nCells) /= tend_uzonal(:,nCellsSolve+1:nCells))
+       end if
+       write(diag_unit,'(a,i0,a,i0,a,2es11.3,a,i0)') 'p2m step ', ncall_p2m, ' rank ', domain_ptr % dminfo % my_proc_id, &
+            ' tend_ru_physics owned edges min/max ', minval(tend_ru_phys(:,1:nEdgesSolve)), maxval(tend_ru_phys(:,1:nEdgesSolve)), &
+            ' nan ', count(tend_ru_phys(:,1:nEdgesSolve) /= tend_ru_phys(:,1:nEdgesSolve))
+       write(diag_unit,'(a,i0,a,i0,a,2es11.3)') 'p2m step ', ncall_p2m, ' rank ', domain_ptr % dminfo % my_proc_id, &
+            ' rho_edge owned edges min/max ', minval(mass_edge(:,1:nEdgesSolve)), maxval(mass_edge(:,1:nEdgesSolve))
+       ! Locate NaN points in the physics wind tendency and print the GWD components
+       ! (from the diag_physics pool, filled by ufs_mpas_phys_diag just before this call).
+       call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics', dbg_diag)
+       call mpas_pool_get_array(mesh_pool, 'latCell', dbg_lat)
+       call mpas_pool_get_array(mesh_pool, 'lonCell', dbg_lon)
+       call mpas_pool_get_array(dbg_diag, 'dtaux3d',    dbg_gw)
+       call mpas_pool_get_array(dbg_diag, 'dtaux3d_ls', dbg_ls)
+       call mpas_pool_get_array(dbg_diag, 'dtaux3d_bl', dbg_bl)
+       call mpas_pool_get_array(dbg_diag, 'dtaux3d_ss', dbg_ss)
+       call mpas_pool_get_array(dbg_diag, 'dtaux3d_fd', dbg_fd)
+       nbad = 0
+       do iCol = 1, nCellsSolve
+          do iLay = 1, nVertLevels
+             if (physics_state % dudt(iCol,iLay) /= physics_state % dudt(iCol,iLay) .and. nbad < 20) then
+                nbad = nbad + 1
+                write(diag_unit,'(a,i0,a,i0,a,i0,a,i0,a,2f9.3,a,5es11.3)') 'p2m NaN rank ', domain_ptr % dminfo % my_proc_id, &
+                     ' iCol ', iCol, ' iLay ', iLay, ' nan-in-column ', &
+                     count(physics_state % dudt(iCol,:) /= physics_state % dudt(iCol,:)), &
+                     ' lat/lon ', dbg_lat(iCol)*57.29578_RKIND, dbg_lon(iCol)*57.29578_RKIND, &
+                     ' dudt_gw/ls/bl/ss/fd ', dbg_gw(iLay,iCol), dbg_ls(iLay,iCol), dbg_bl(iLay,iCol), dbg_ss(iLay,iCol), dbg_fd(iLay,iCol)
+             end if
+          end do
+       end do
+       close(diag_unit)
+    end if
 
     !> #####################################################################################
     !> Diagnostics
@@ -674,47 +738,47 @@ contains
     do ithread=1,nThreads
       do iCol=cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         do iLay = 1,nVertLevels
-          
+
           ! Initialize diabatic heating tendency (initially fill with theta_m before updating)
           rt_diabatic_tend(iLay,iCol) = theta_m(iLay,iCol)
-          
+
           ! Update potential temperature (theta) with microphysics tendency
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
           theta_dyn = theta_m(ilay,iCol)/coeff
           theta(iLay,iCol) = theta_dyn + config_dt * (physics_state % dtdt(iCol,iLay) / exner(iLay,iCol))
-          
+
           ! Scalars (col,layer,tracer) -> (tracer,layer,col)
           do iTracer = 1,num_scalars
             tracers(iTracer,iLay,iCol) = max(0._RKIND, tracers(iTracer,iLay,iCol) + config_dt * physics_state % dqdt(iCol,iLay,iTracer))
           end do
-          
+
           ! update the virtual temperature coefficient with updated qv
           coeff = (1._RKIND + rvord * tracers(index_qv,iLay,iCol))
           ! Modified potential temperature (theta ->theta_m)
           theta_m(iLay,iCol) = theta(iLay,iCol)*coeff
-          
+
           ! Now compute diabatic heating due to microphsyics, save for next time step
           rt_diabatic_tend(iLay,iCol) = (theta_m(iLay,iCol) - rt_diabatic_tend(iLay,iCol)) / config_dt
-          
+
           ! Save the straight theta tendency due to microphysics
           dtheta_dt_mp(iLay,iCol) =  (theta(iLay,iCol) - theta_dyn) / config_dt
-          
+
           ! Density weighted perturbation potential temperature
           rtheta_p(iLay,iCol) = rho_zz(iLay,iCol) * theta_m(iLay,iCol) - rtheta_b(iLay,iCol)
-          
+
           ! Exner function
           exner(iLay,iCol) = (zz(iLay,iCol)*(rgas/P0)*(rtheta_p(iLay,iCol)+rtheta_b(iLay,iCol)))**rcv
 
           ! Perturbation pressure
           pressure_p(iLay,iCol) = zz(iLay,iCol)*rgas*(exner(iLay,iCol)*rtheta_p(iLay,iCol) + &
-                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))  
+                                    (exner(iLay,iCol)-exner_b(iLay,iCol))*rtheta_b(iLay,iCol))
         end do
       end do
     end do
-    
+
     ! write(*,*) 'num_scalars',num_scalars
     ! if (associated(index_qv)) write(*,*) 'mean max/min ten qv',sum(tracers(index_qv,:,:)) / real(size(tracers(index_qv,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qv)), config_dt*minval(physics_state % ten_q(:,:,index_qv))
-    ! if (associated(index_qc)) write(*,*) 'mean max/min ten qc',sum(tracers(index_qc,:,:)) / real(size(tracers(index_qc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qc)), config_dt*minval(physics_state % ten_q(:,:,index_qc)) 
+    ! if (associated(index_qc)) write(*,*) 'mean max/min ten qc',sum(tracers(index_qc,:,:)) / real(size(tracers(index_qc,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qc)), config_dt*minval(physics_state % ten_q(:,:,index_qc))
     ! if (associated(index_qi)) write(*,*) 'mean max/min ten qi',sum(tracers(index_qi,:,:)) / real(size(tracers(index_qi,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qi)), config_dt*minval(physics_state % ten_q(:,:,index_qi))
     ! if (associated(index_qr)) write(*,*) 'mean max/min ten qr',sum(tracers(index_qr,:,:)) / real(size(tracers(index_qr,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qr)), config_dt* minval(physics_state % ten_q(:,:,index_qr))
     ! if (associated(index_qs)) write(*,*) 'mean max/min ten qs',sum(tracers(index_qs,:,:)) / real(size(tracers(index_qs,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_qs)), config_dt*minval(physics_state % ten_q(:,:,index_qs))
@@ -726,7 +790,7 @@ contains
     ! if (associated(index_ng)) write(*,*) 'mean max/min ten ng',sum(tracers(index_ng,:,:)) / real(size(tracers(index_ng,:,:))),config_dt*maxval(physics_state %ten_q(:,:,index_ng)), config_dt*minval(physics_state % ten_q(:,:,index_ng))
     ! if (associated(index_nifa)) write(*,*) 'mean max/min ten nifa',sum(tracers(index_nifa,:,:)) / real(size(tracers(index_nifa,:,:))), config_dt*maxval(physics_state % ten_q(:,:,index_nifa)), config_dt*minval(physics_state % ten_q(:,:,index_nifa))
     ! if (associated(index_nwfa)) write(*,*) 'mean max/min ten nwfa',sum(tracers(index_nwfa,:,:)) /real(size(tracers(index_nwfa,:,:))),config_dt*maxval(physics_state % ten_q(:,:,index_nwfa)), config_dt*minval(physics_state % ten_q(:,:,index_nwfa))
-    
+
 
     ! Calculation of the surface pressure using hydrostatic assumption down to the surface.
     ! (from mpas_atmphys_interface.F:MPAS_to_physics())
@@ -752,7 +816,7 @@ contains
   !> #########################################################################################
   !> Procedure to update physics (CCPP) state using updated MPAS state.
   !> Called AFTER dynamics, BEFORE microphysics.
-  !> 
+  !>
   !> Analogous to microphysics_from_MPAS in src/core_atmosphere/physics/mpas_atmphys_interface.F
   !>
   !> #########################################################################################
@@ -829,10 +893,10 @@ contains
     nullify(state_pool)
 
     ! DJS:  Update hydrostatic pressure after dynamics, before MP?
-    
+
     ! GJF: Remove microphysics heating from state before calling microphysics. This is done
     ! at line 3317 of mpas_atm_time_integration.F/atm_recover_large_step_variables_work.
- 
+
   end subroutine ufs_mpas_to_microphysics
 
 !> #########################################################################################
@@ -861,7 +925,7 @@ contains
 
     ierr = 0
     rad2deg = 180.0_RKIND/pii
-    
+
     ! Get openMP information
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nThreads',             nThreads)
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
@@ -869,12 +933,12 @@ contains
 
     ! Access MPAS data pools.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh',  mesh_pool)
-    
+
     call mpas_pool_get_array(mesh_pool,  'latCell',     lat)
     call mpas_pool_get_array(mesh_pool,  'lonCell',     lon)
     call mpas_pool_get_array(mesh_pool,  'areaCell',    area)
     call mpas_pool_get_array(mesh_pool,  'meshDensity', meshDensity)
-    
+
     ! (from mpas_atm_core.F/atm_core_init Determine horizontal length scale used by horizontal diffusion and 3-d divergence damping
     nullify(nominalMinDc)
     call mpas_pool_get_array(mesh_pool, 'nominalMinDc', nominalMinDc)
@@ -923,7 +987,7 @@ contains
           physics_grid % dx(i)     = config_len_disp / meshDensity(i)**0.25
        end do
     end do
-    
+
   end subroutine ufs_mpas_grid_to_physics
 
 !> #########################################################################################
@@ -943,8 +1007,8 @@ contains
     type(mpas_pool_type), pointer :: sfc_input, mesh, diag_phys
     integer :: i, ierr, iCol, iLev, ithread
     integer, pointer :: nThreads, cellSolveThreadStart(:), cellSolveThreadEnd(:)
-    integer, pointer :: isltyp(:), ivgtyp(:), landmask(:), nSoilLevels 
-    real(RKIND), pointer :: dzs(:,:), sh2o(:,:), smois(:,:), tslb(:,:) 
+    integer, pointer :: isltyp(:), ivgtyp(:), landmask(:), nSoilLevels
+    real(RKIND), pointer :: dzs(:,:), sh2o(:,:), smois(:,:), tslb(:,:)
     real(RKIND), pointer :: albbck(:), skintemp(:), snow(:), snowc(:), snowh(:)
     real(RKIND), pointer :: sst(:), tmn(:), vegfra(:), seaice(:), xice(:), xland(:), znt(:), sfc_albedo(:), canwat(:)
     real(RKIND), pointer :: greenfrac(:,:), albedo12m(:,:)
@@ -957,13 +1021,13 @@ contains
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadStart', cellSolveThreadStart)
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'cellSolveThreadEnd',   cellSolveThreadEnd)
     call mpas_pool_get_dimension(domain_ptr % blocklist % dimensions,  'nSoilLevels',          nSoilLevels)
-    
+
     ! Access MPAS data pools.
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'sfc_input', sfc_input)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh', mesh)
     call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag_physics', diag_phys)
     !using fv3atm_sfc_io.F90/Sfc_io_transfer() as a template; mpas_init_atm_static.F from MPAS-model for syntax
-    
+
     !just grab the data from sfc_input as it exists; will figure out where/how to organize into GFS_typedefs later
     !call mpas_pool_get_array(sfc_input, 'dzs',       dzs) !dim: (nSoilLevels nCells Time); soil layer thickness (m), zs/dzs are
     !initialized in RUC LSM or GFS_typedefs - no need to use the read values
@@ -971,7 +1035,7 @@ contains
     call mpas_pool_get_array(sfc_input, 'ivgtyp',    ivgtyp) !dim (nCells); dominant vegetation category
     call mpas_pool_get_array(sfc_input, 'landmask',  landmask) !dim (nCells); land-ocean mask (1=land ; 0=ocean)
     call mpas_pool_get_array(sfc_input, 'mminlu',    mminlu) ! (string) land use classification
-    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck) !dim (nCells Time); background surface albedo    
+    call mpas_pool_get_array(sfc_input, 'sfc_albbck',albbck) !dim (nCells Time); background surface albedo
     call mpas_pool_get_array(sfc_input, 'sh2o',      sh2o)  !dim (nSoilLevels nCells Time); soil equivalent liquid water (m3 m^{-3})
     call mpas_pool_get_array(sfc_input, 'smois',     smois) !dim (nSoilLevels nCells Time); soil moisture (m3 m^{-3})
     call mpas_pool_get_array(sfc_input, 'skintemp',  skintemp) !dim (nCells Time); ground or water surface temperature (K)
@@ -991,13 +1055,13 @@ contains
     call mpas_pool_get_array(sfc_input, 'snoalb',    snoalb) !dim (nCells); annual maximum snow albedo
     call mpas_pool_get_array(sfc_input, 'greenfrac', greenfrac) !dim (nMonths nCells); monthly-mean climatological greenness fraction (percent)
     call mpas_pool_get_array(sfc_input, 'albedo12m', albedo12m) !dim (nMonhts nCells); monthly-mean climatological surface albedo (percent)
-    
+
     call mpas_pool_get_array(sfc_input, 'canwat',    canwat) !dim (nCells); water in canopy (kg m^-2)
-    
+
     call mpas_pool_get_array(diag_phys, 'znt',       znt) !dim (nCells); roughness length (m)
     call mpas_pool_get_array(diag_phys, 'sfc_albedo',sfc_albedo ) !dim (nCells); surface albedo (fraction)
-    
-    
+
+
     ! write(*,*) 'shape/min/max dzs',SHAPE(dzs),minval(dzs),maxval(dzs)
     ! write(*,*) 'shape/min/max isltyp',SHAPE(isltyp),minval(isltyp),maxval(isltyp)
     ! write(*,*) 'shape/min/max ivgtyp',SHAPE(ivgtyp),minval(ivgtyp),maxval(ivgtyp)
@@ -1023,7 +1087,7 @@ contains
     ! write(*,*) 'shape/min/max snoalb',SHAPE(snoalb),minval(snoalb),maxval(snoalb)
     ! write(*,*) 'shape/min/max greenfrac',SHAPE(greenfrac),minval(greenfrac),maxval(greenfrac)
     ! write(*,*) 'shape/min/max albedo12m',SHAPE(albedo12m),minval(albedo12m),maxval(albedo12m)
-    
+
     do ithread = 1,nThreads
       do iCol = cellSolveThreadStart(ithread),cellSolveThreadEnd(ithread)
         if (landmask(iCol) == 1) then
@@ -1059,9 +1123,9 @@ contains
         !physics_sfcprop % hice(iCol)  = 0.0_RKIND !no input in ICs; probably from a climatological sea ice dataset?
         physics_sfcprop % fice(iCol)   = xice(iCol) !potentially need to divide by a sea area fraction if necessary?
         physics_sfcprop % tisfc(iCol)  = skintemp(iCol)
-        !physics_sfcprop % tprcp(iCol) = 
-        !physics_sfcprop % srflag(iCol) = 
-        !physics_sfcprop % snowd(iCol) = 
+        !physics_sfcprop % tprcp(iCol) =
+        !physics_sfcprop % srflag(iCol) =
+        !physics_sfcprop % snowd(iCol) =
         physics_sfcprop % shdmin(iCol) = shdmin(iCol)
         physics_sfcprop % shdmax(iCol) = shdmax(iCol)
         !physics_sfcprop % slope(iCol) = ? supposed to be read in from GENPARM.TBL? need to call RUCLSM_SOILVEGPARM at some point?
@@ -1072,33 +1136,33 @@ contains
           physics_sfcprop % scolor(iCol) = 0
         endif
         physics_sfcprop % sncovr(iCol) = snowc(iCol)
-        !physics_sfcprop % snodl(iCol) = 
-        !physics_sfcprop % weasdl(iCol) = 
+        !physics_sfcprop % snodl(iCol) =
+        !physics_sfcprop % weasdl(iCol) =
         physics_sfcprop % tsfc(iCol) = skintemp(iCol)
         physics_sfcprop % tsfcl(iCol) = skintemp(iCol)
-        !physics_sfcprop % zorlw(iCol) = 
+        !physics_sfcprop % zorlw(iCol) =
         !physics_sfcprop % zorll(iCol) =
         !physics_sfcprop % zorli(iCol) =
-        !physics_sfcprop % albdirvis_lnd(iCol) = 
-        !physics_sfcprop % albdirnir_lnd(iCol) = 
-        !physics_sfcprop % albdifvis_lnd(iCol) = 
-        !physics_sfcprop % albdifnir_lnd(iCol) = 
-        !physics_sfcprop % emis_lnd(iCol) = 
-        !physics_sfcprop % emis_ice(iCol) = 
-        !physics_sfcprop % sncovr_ice(iCol) = 
-        !physics_sfcprop % snodi(iCol) = 
-        !physics_sfcprop % weasdi(iCol) =   
+        !physics_sfcprop % albdirvis_lnd(iCol) =
+        !physics_sfcprop % albdirnir_lnd(iCol) =
+        !physics_sfcprop % albdifvis_lnd(iCol) =
+        !physics_sfcprop % albdifnir_lnd(iCol) =
+        !physics_sfcprop % emis_lnd(iCol) =
+        !physics_sfcprop % emis_ice(iCol) =
+        !physics_sfcprop % sncovr_ice(iCol) =
+        !physics_sfcprop % snodi(iCol) =
+        !physics_sfcprop % weasdi(iCol) =
         do iLev=1, nSoilLevels
           physics_sfcprop % sh2o(iCol, iLev) = sh2o(iLev, iCol)
           physics_sfcprop % smois(iCol, iLev) = smois(iLev, iCol)
           physics_sfcprop % smc(iCol, iLev) = smois(iLev, iCol)
           physics_sfcprop % tslb(iCol, iLev) = tslb(iLev, iCol)
-          physics_sfcprop % stc(iCol, iLev) = tslb(iLev, iCol)  
+          physics_sfcprop % stc(iCol, iLev) = tslb(iLev, iCol)
           !need to define stc, smc, slc instead becasue CCPP version of RUC LSM expects that? set lsoil = lsoil_lsm = 9?
         end do
       end do
     end do
-    
+
     !dzs is defined for every cell in the input data, but the variable in GFS_typedefs only has soil depth as a dimension (is
     !uniform for every grid cell)
     !physics_control % dzs(1) = dzs(1,1)
@@ -1108,13 +1172,13 @@ contains
     !  physics_control % zs(iLev) = physics_control % zs(iLev-1) - physics_control % dzs(iLev)
     !end do
 
-    
+
   end subroutine ufs_mpas_sfc_to_physics
 
   !> #########################################################################################
   !> Procedure to populate CCPP data container with MPAS pool data.
   !> Initial condition fields needed by the CCPP GWD parameterization.
-  !> 
+  !>
   !> #########################################################################################
   subroutine ufs_mpas_gwd_to_physics(control,surface)
     use GFS_typedefs,         only : GFS_control_type
@@ -1198,10 +1262,14 @@ contains
           !      drag_suite_run doesn't use these...
           !      GFS_GWD_generic_pre sets them to zero, since mntvar(11:14) is initialized to zero.
           !      Not using GFS_GWD_generic_pre in UFS-MPAS, instead these are initializaed to zero elsewhere.
-          !surface % gamma(iCol) = 
-          !surface % sigma(iCol) = 
-          !surface % theta(iCol) = 
-          !surface % elvmax(iCol = 
+
+          ! UGWPv1 requires these fields, TODO: do the other options need them?
+          if (control%gwd_opt==2) then
+             surface % gamma(iCol) = 0.0
+             surface % sigma(iCol) = 0.0
+             surface % theta(iCol) = 0.0
+             surface % elvmax(iCol) = 0.0
+          end if
           if (control%gwd_opt==3 .or. control%gwd_opt==33 .or. &
               control%gwd_opt==2 .or. control%gwd_opt==22 ) then
              surface % hprime(iCol,1) = var2dls(iCol)
@@ -1229,6 +1297,102 @@ contains
     end do
 
   end subroutine ufs_mpas_gwd_to_physics
+
+  !> #########################################################################################
+  !> Build the dycore-neutral reference pressure profile that UGWPv1 expects in ak/bk.
+  !>
+  !> FV3 passes its hybrid sigma-pressure coefficients to control_initialize(); MPAS is on a
+  !> terrain-following height coordinate and has no such coefficients, so cires_ugwpv1_init
+  !> would otherwise dereference null pointers at cires_ugwpv1_module.F90:252:
+  !>
+  !>     pmb(k) = ak(k) + pref*bk(k)        ! pref = 1.e5
+  !>     zkm(k) = -hpskm*alog(pmb(k)/pref)
+  !>
+  !> Setting bk = 0 and ak = a reference layer pressure makes that evaluate pmb(k) = ak(k).
+  !> The reference used here is the global mean of the MPAS base-state pressure, which is
+  !> MPAS's own notion of a reference profile rather than an invented one.
+  !>
+  !> The mean is taken with a global reduction on purpose. pressure_base is (nVertLevels,
+  !> nCells) because the terrain-following coordinate makes the base state terrain-dependent,
+  !> so a per-rank mean or a single arbitrary column would change with the MPI decomposition
+  !> and break decomposition-independence. Terrain spread in layer height is under 2% above
+  !> 15 km, so the choice only perturbs UGWP's launch level by a level or two.
+  !>
+  !> Ordered surface -> TOA, matching both the MPAS bottom-up convention and the
+  !> "ak -pa bk-dimensionless from surf" comment in cires_ugwpv1_module.F90.
+  !> Called once, before MPAS_initialize().
+  !> #########################################################################################
+  subroutine ufs_mpas_reference_pressure(levs, ak, bk)
+    use mpas_derived_types,   only : mpas_pool_type
+    use mpas_derived_types,   only : MPAS_LOG_CRIT
+    use mpas_pool_routines,   only : mpas_pool_get_subpool, mpas_pool_get_dimension, mpas_pool_get_array
+    use mpas_dmpar,           only : mpas_dmpar_sum_real_array, mpas_dmpar_sum_int
+    use mpas_log,             only : mpas_log_write
+
+    ! Arguments
+    integer,          intent(in)  :: levs
+    real(kind=RKIND), intent(out) :: ak(levs+1)   !< reference pressure at layer centres (Pa)
+    real(kind=RKIND), intent(out) :: bk(levs+1)   !< zero; MPAS is not on a hybrid coordinate
+
+    ! Locals
+    type(mpas_pool_type), pointer :: mesh_pool, diag_pool
+    integer, pointer :: nCellsSolve, nVertLevels
+    real(kind=RKIND), pointer :: pressure_base(:,:)
+    real(kind=RKIND), allocatable :: localSum(:), globalSum(:)
+    integer :: iCol, iLay, nCellsGlobal
+    character(len=*), parameter :: subname = 'atmos_coupling::ufs_mpas_reference_pressure'
+
+    ! Access MPAS data pools
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'mesh', mesh_pool)
+    call mpas_pool_get_subpool(domain_ptr % blocklist % structs, 'diag', diag_pool)
+    call mpas_pool_get_dimension(mesh_pool, 'nCellsSolve', nCellsSolve)
+    call mpas_pool_get_dimension(mesh_pool, 'nVertLevels', nVertLevels)
+    call mpas_pool_get_array(diag_pool, 'pressure_base', pressure_base)
+
+    if (nVertLevels /= levs) then
+       call mpas_log_write(subname // ' ERROR: nVertLevels does not match levs', &
+                           messageType=MPAS_LOG_CRIT)
+    end if
+    if (.not. associated(pressure_base)) then
+       call mpas_log_write(subname // ' ERROR: diag pressure_base is not associated; ' // &
+                           'MPAS base state must be initialized before this call', &
+                           messageType=MPAS_LOG_CRIT)
+    end if
+
+    allocate(localSum(levs), globalSum(levs))
+    localSum(:) = 0.0_RKIND
+
+    do iCol = 1, nCellsSolve
+       do iLay = 1, levs
+          localSum(iLay) = localSum(iLay) + pressure_base(iLay,iCol)
+       end do
+    end do
+
+    call mpas_dmpar_sum_real_array(domain_ptr % dminfo, levs, localSum, globalSum)
+    call mpas_dmpar_sum_int(domain_ptr % dminfo, nCellsSolve, nCellsGlobal)
+
+    if (nCellsGlobal <= 0) then
+       call mpas_log_write(subname // ' ERROR: global cell count is not positive', &
+                           messageType=MPAS_LOG_CRIT)
+    end if
+
+    ak(1:levs) = globalSum(1:levs) / real(nCellsGlobal, RKIND)
+    ! Model lid. cires_ugwpv1_module.F90:248 documents the top of the profile as zero
+    ! pressure; UGWPv1 reads only 1:levs, so this element exists to satisfy the ak(levs+1)
+    ! declaration in its interface.
+    ak(levs+1) = 0.0_RKIND
+    bk(:)      = 0.0_RKIND
+
+    call mpas_log_write(subname // ': MPAS reference pressure profile from base state, ' // &
+                        '$i global cells', intArgs=[nCellsGlobal])
+    call mpas_log_write(subname // ': surface ak = $r Pa, model-top layer ak = $r Pa', &
+                        realArgs=[ak(1), ak(levs)])
+
+    deallocate(localSum, globalSum)
+    nullify (mesh_pool)
+    nullify (diag_pool)
+
+  end subroutine ufs_mpas_reference_pressure
 
   !> #########################################################################################
   !> Procedure to populate MPAS diag_phys pool with CCPP data.
@@ -1553,5 +1717,5 @@ contains
                                                  +  edgeNormalVectors(3,iEdge) * north(3,cell2))
     end do
   end subroutine tend_toEdges
-  
+
 end module atmos_coupling_mod
